@@ -21,10 +21,16 @@ const (
 
 const (
 	SystemPrompt = `You are a software engineer in an agile team tasked to create an issue-tracker application in Golang.
-You will receive one functional requirement (FR) for what you need to implement in each prompt and are expected to provide all required code and file changes in a patch file. 
-Along with the FR, you will receive the contents of a test file that will verify the implementation of the FR.
-Assume the working directory is app/ and it starts empty. Your response should only include the patch file and not any additional text.
-Example prompt:
+You will receive one functional requirement (FR) or change request (CR) for what you need to implement in each prompt and are expected to provide all required code and file changes (line additions, modifications and removals) in a patch file.
+Along with the FR, you will receive the contents of a test file that will verify the changes you made. All previous tests should also pass.
+Assume the working directory is app/ and it starts empty.
+Assume your changes from previous prompts are already applied.
+Your response should only include the patch file and not any additional text.
+Make sure the changes don't result in any compilation errors.
+Don't provide changes to test files.
+Make sure line ranges of the patch file header include all changes provided in the patch file.
+Example prompt-response sequence:
+# Example prompt 1
 // FR0: App should print out 'Hello World!
 package main
 
@@ -37,7 +43,8 @@ func TestGetMessage(t *testing.T) {
 		t.Fatalf("want %s, got %s", want, got)
 	}
 }
-Desired response:
+
+# Example response 1:
 --- app/main.go
 +++ app/main.go
 @@ -0,0 +1,11 @@
@@ -46,24 +53,40 @@ Desired response:
 +import "fmt"
 +
 +func main() {
-+   fmt.Println(getMessage())
++    fmt.Println(getText())
 +}
 +
-+func getMessage() string {
-+   return "Hello World!"
++func getText() string {
++    return "Hello World!"
 +}
+
+# Example prompt 2
+// CR1: Length of the printed out text should be 5 words
+package main
+
+import "testing"
+
+func TestGetTextLength(t *testing.T) {
+	want := 5
+	got := len(strings.Split(getText(), " "))
+	if want != got {
+		t.Fatalf("want %s, got %s", want, got)
+	}
+}
+
+# Example response 2:
+--- app/main.go
++++ app/main.go
+@@ -7,5 +7,5 @@
+ }
+ 
+ func getText() string {
+-    return "Hello World!"
++    return "This text has 5 words!"
+ }
+
 `
 )
-
-type AnthContent struct {
-	Text string `json:"text"`
-}
-
-type AnthResponse struct {
-	Id      string        `json:"id"`
-	Role    string        `json:"role"`
-	Content []AnthContent `json:"content"`
-}
 
 type AnthMessage struct {
 	Role    string `json:"role"`
@@ -77,32 +100,23 @@ type AnthMessagesPayload struct {
 	Messages  []AnthMessage `json:"messages"`
 }
 
-func SendPrompt() ([]byte, error) {
-	payload := AnthMessagesPayload{
-		Model:     "claude-3-haiku-20240307",
-		MaxTokens: 1024,
-		System:    SystemPrompt,
-		Messages: []AnthMessage{
-			{
-				Role: "user",
-				Content: `
-package main
-
-import "testing"
-
-// FR1: App should print out 'This will be an issue tracker!
-func TestGetMessage(t *testing.T) {
-	want := "This will be an issue tracker!"
-	got := getMessage()
-	if want != got {
-		t.Fatalf("want %s, got %s", want, got)
-	}
+type AnthContent struct {
+	Text string `json:"text"`
 }
-`,
-			},
-		},
-	}
 
+type AnthUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
+type AnthResponse struct {
+	Id      string        `json:"id"`
+	Role    string        `json:"role"`
+	Content []AnthContent `json:"content"`
+	Usage   AnthUsage     `json:"usage"`
+}
+
+func SendPrompt(payload AnthMessagesPayload) ([]byte, error) {
 	data := bytes.NewBuffer([]byte{})
 	json.NewEncoder(data).Encode(payload)
 
@@ -150,7 +164,11 @@ func CreatePatchFile(response AnthResponse, fpath string) error {
 		if len(content.Text) == 0 || content.Text[len(content.Text)-1] != '\n' {
 			content.Text += "\n"
 		}
-		patchFile.WriteString(content.Text)
+
+		_, err := patchFile.WriteString(content.Text)
+		if err != nil {
+			return fmt.Errorf("error writing to patch file: %w", err)
+		}
 	}
 
 	return nil
