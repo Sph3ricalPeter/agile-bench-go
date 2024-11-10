@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Sph3ricalPeter/frbench/common"
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/internal"
+	"github.com/Sph3ricalPeter/frbench/internal/common"
 )
 
 var (
@@ -22,22 +22,24 @@ const (
 )
 
 type AnthConnector struct {
-	model   AnthModel
-	history []AnthMessage
-	cache   *internal.JsonCache
+	model     AnthModel
+	sysPrompt string
+	history   []AnthMessage
+	cache     *internal.JsonCache
 }
 
-func NewAnthConnector(model AnthModel) *AnthConnector {
+func NewAnthConnector(model AnthModel, sysPrompt string) *AnthConnector {
 	return &AnthConnector{
-		model:   model,
-		history: make([]AnthMessage, 0),
-		cache:   internal.NewJsonCache("cache/anth"),
+		model:     model,
+		sysPrompt: sysPrompt,
+		history:   make([]AnthMessage, 0),
+		cache:     internal.NewJsonCache("cache/anth"),
 	}
 }
 
 // SendPrompt sends a prompt to the Anthropic API and returns the result.
 // If the prompt is successfully sent, the response is cached.
-func (c *AnthConnector) SendPrompt(pd external.SendPromptData) (*external.SendPromptResult, error) {
+func (c *AnthConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPromptResult, error) {
 	// map to model specific prompt data
 	apd, err := mapPromptData(pd)
 	if err != nil {
@@ -45,7 +47,25 @@ func (c *AnthConnector) SendPrompt(pd external.SendPromptData) (*external.SendPr
 	}
 
 	promptMsg := NewMessage(apd.Role, string(pd.Prompt))
-	reqPayload := NewRequest(c.model, MaxTokens, "", append(c.history, promptMsg))
+	var msgs []AnthMessage
+	if pd.UseHistory {
+		msgs = append(c.history, promptMsg)
+	} else {
+		msgs = []AnthMessage{promptMsg}
+	}
+	reqPayload := NewRequest(c.model, MaxTokens, c.sysPrompt, msgs)
+
+	// TODO: caching and history should be common for all connectors ...
+	// if history uses common prompt struct, this can be moved outside of the SendPrompt method
+	// and the prompt is only added to history if response is OK, which means it can be done after the SendPrompt call
+	cacheKey := internal.CreateCacheKey(pd.Prompt, pd.Number)
+	if pd.UseCache {
+		if respBytes, ok := c.cache.Get(cacheKey); ok {
+			fmt.Println("Using cached response ...")
+			c.history = append(c.history, promptMsg)
+			return c.GetPromptResult(respBytes, true, &cacheKey)
+		}
+	}
 
 	reqBody := bytes.NewBuffer([]byte{})
 	json.NewEncoder(reqBody).Encode(reqPayload)
@@ -53,32 +73,21 @@ func (c *AnthConnector) SendPrompt(pd external.SendPromptData) (*external.SendPr
 	// FIXME: testing only
 	_ = os.WriteFile(fmt.Sprintf("data/anth-req-%d.json", pd.Number), reqBody.Bytes(), 0644)
 
-	cacheKey := common.CreateCacheKey(pd.Prompt, pd.Number)
-	if pd.UseCache {
-		if respBytes, ok := c.cache.Get(cacheKey); ok {
-			fmt.Println("Using cached response ...")
-			c.history = append(c.history, promptMsg)
-			return c.GetPromptResult(respBytes, &cacheKey)
-		}
-	}
-
 	respBytes, err := sendRequest(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
+	c.history = append(c.history, promptMsg)
 
 	err = c.cache.Put(cacheKey, respBytes)
 	if err != nil {
 		return nil, fmt.Errorf("error caching prompt: %w", err)
 	}
 
-	// add request to the history
-	c.history = append(c.history, promptMsg)
-
-	return c.GetPromptResult(respBytes, &cacheKey)
+	return c.GetPromptResult(respBytes, false, &cacheKey)
 }
 
-func (c *AnthConnector) GetPromptResult(resp []byte, cacheKey *string) (*external.SendPromptResult, error) {
+func (c *AnthConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *string) (*external.SendPromptResult, error) {
 	respData := AnthResponse{}
 	err := json.Unmarshal(resp, &respData)
 	if err != nil {
@@ -100,8 +109,9 @@ func (c *AnthConnector) GetPromptResult(resp []byte, cacheKey *string) (*externa
 			InputTokens:  respData.Usage.InputTokens,
 			OutputTokens: respData.Usage.OutputTokens,
 		},
-		Content:  respData.Content[0].Text,
-		CacheKey: cacheKey,
+		Content:   respData.Content[0].Text,
+		CacheKey:  cacheKey,
+		UsedCache: isCached,
 	}, nil
 }
 

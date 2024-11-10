@@ -40,7 +40,7 @@ type GooglePromptData struct {
 	Role GeminiRole
 }
 
-func mapToGoogleData(p external.SendPromptData) (*GooglePromptData, error) {
+func mapToGoogleData(p external.SendPromptOpts) (*GooglePromptData, error) {
 	if _, ok := RoleToGeminiRole[p.Role]; !ok {
 		return nil, fmt.Errorf("unknown role %q", p.Role)
 	}
@@ -54,11 +54,11 @@ type GeminiRequest struct {
 	Contents          []GeminiMessage         `json:"contents"`
 }
 
-func NewGeminiRequest(systemInstruction string, contents []GeminiMessage) GeminiRequest {
+func NewGeminiRequest(sysInstr string, contents []GeminiMessage) GeminiRequest {
 	return GeminiRequest{
 		SystemInstruction: GeminiSystemInstruction{
 			Parts: []GeminiMessagePart{
-				{Text: systemInstruction},
+				{Text: sysInstr},
 			},
 		},
 		Contents: contents,

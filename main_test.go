@@ -1,9 +1,14 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Sph3ricalPeter/frbench/internal"
+	"github.com/Sph3ricalPeter/frbench/internal/project"
+)
 
 func TestLoadCodebase(t *testing.T) {
-	codebase, err := loadCodebase()
+	codebase, err := project.LoadCodebase()
 	if err != nil {
 		t.Fatalf("error loading codebase: %s", err.Error())
 	}
@@ -13,16 +18,16 @@ func TestLoadCodebase(t *testing.T) {
 }
 
 func TestInitProject(t *testing.T) {
-	err := initProject("simple-todo")
+	err := project.InitProject("simple-todo")
 	if err != nil {
 		t.Fatalf("error initializing project: %s", err.Error())
 	}
 }
 
 func TestPreparePrompt(t *testing.T) {
-	_, err := preparePrompt(ProjectInfo{
-		Project: Project{
-			Requirements: []Requirement{
+	_, err := internal.PreparePatchPrompt(project.ProjectInfo{
+		Project: project.Project{
+			Requirements: []project.Requirement{
 				{
 					Description: "App should print out a message 'This will be a TODO app!' when started.",
 					Tests:       []string{"1_test.go"},

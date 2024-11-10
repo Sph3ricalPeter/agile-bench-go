@@ -1,8 +1,8 @@
 package external
 
 type Connector interface {
-	SendPrompt(pd SendPromptData) (*SendPromptResult, error)
-	GetPromptResult(resp []byte, cacheKey *string) (*SendPromptResult, error)
+	SendPrompt(pd SendPromptOpts) (*SendPromptResult, error)
+	GetPromptResult(resp []byte, isCached bool, cacheKey *string) (*SendPromptResult, error)
 	InvalidateCachedPrompt(cacheKey string) error
 	GetModelName() string
 }
@@ -14,17 +14,19 @@ const (
 	RoleModel Role = "model"
 )
 
-type SendPromptData struct {
-	Role     Role
-	Prompt   []byte
-	UseCache bool
-	Number   int
+type SendPromptOpts struct {
+	Role       Role
+	Prompt     []byte
+	Number     int
+	UseCache   bool
+	UseHistory bool
 }
 
 type SendPromptResult struct {
 	RespBytes []byte
 	Content   string
 	Usage     ModelUsage
+	UsedCache bool
 	CacheKey  *string
 }
 

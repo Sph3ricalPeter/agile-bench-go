@@ -39,7 +39,7 @@ type AnthPromptData struct {
 	Role  AnthRole  `json:"role"`
 }
 
-func mapPromptData(p external.SendPromptData) (*AnthPromptData, error) {
+func mapPromptData(p external.SendPromptOpts) (*AnthPromptData, error) {
 	if _, ok := RoleToAnthRole[p.Role]; !ok {
 		return nil, fmt.Errorf("invalid role: %s", p.Role)
 	}

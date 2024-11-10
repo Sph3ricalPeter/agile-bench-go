@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/Sph3ricalPeter/frbench/common"
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/internal"
+	"github.com/Sph3ricalPeter/frbench/internal/common"
 )
 
 var (
@@ -18,27 +18,35 @@ var (
 )
 
 type GoogleConnector struct {
-	model   GoogleModel
-	history []GeminiMessage
-	cache   *internal.JsonCache
+	model     GoogleModel
+	sysPrompt string
+	history   []GeminiMessage
+	cache     *internal.JsonCache
 }
 
-func NewGoogleConnector(model GoogleModel) *GoogleConnector {
+func NewGoogleConnector(model GoogleModel, sysPrompt string) *GoogleConnector {
 	return &GoogleConnector{
-		model:   model,
-		history: make([]GeminiMessage, 0),
-		cache:   internal.NewJsonCache("cache/google"),
+		model:     model,
+		sysPrompt: sysPrompt,
+		history:   make([]GeminiMessage, 0),
+		cache:     internal.NewJsonCache("cache/google"),
 	}
 }
 
-func (c *GoogleConnector) SendPrompt(pd external.SendPromptData) (*external.SendPromptResult, error) {
+func (c *GoogleConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPromptResult, error) {
 	gpd, err := mapToGoogleData(pd)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping prompt data: %w", err)
 	}
 
 	promptMsg := NewGeminiMessage(gpd.Role, string(pd.Prompt))
-	reqPayload := NewGeminiRequest(common.SystemPromptSWEBenchLike, append(c.history, promptMsg))
+	var msgs []GeminiMessage
+	if pd.UseHistory {
+		msgs = append(c.history, promptMsg)
+	} else {
+		msgs = []GeminiMessage{promptMsg}
+	}
+	reqPayload := NewGeminiRequest(c.sysPrompt, msgs)
 
 	reqBody := bytes.NewBuffer([]byte{})
 	json.NewEncoder(reqBody).Encode(reqPayload)
@@ -46,12 +54,12 @@ func (c *GoogleConnector) SendPrompt(pd external.SendPromptData) (*external.Send
 	// FIXME: testing only
 	_ = os.WriteFile(fmt.Sprintf("data/gemini-req-%d.json", pd.Number), reqBody.Bytes(), 0644)
 
-	cacheKey := common.CreateCacheKey(pd.Prompt, pd.Number)
+	cacheKey := internal.CreateCacheKey(pd.Prompt, pd.Number)
 	if pd.UseCache {
 		if respBytes, ok := c.cache.Get(cacheKey); ok {
 			fmt.Println("Using cached response ...")
 			c.history = append(c.history, promptMsg)
-			return c.GetPromptResult(respBytes, &cacheKey)
+			return c.GetPromptResult(respBytes, true, &cacheKey)
 		}
 	}
 
@@ -67,12 +75,14 @@ func (c *GoogleConnector) SendPrompt(pd external.SendPromptData) (*external.Send
 		return nil, fmt.Errorf("error caching response: %w", err)
 	}
 
-	c.history = append(c.history, promptMsg)
+	if pd.UseHistory {
+		c.history = append(c.history, promptMsg)
+	}
 
-	return c.GetPromptResult(respBytes, &cacheKey)
+	return c.GetPromptResult(respBytes, false, &cacheKey)
 }
 
-func (c *GoogleConnector) GetPromptResult(resp []byte, cacheKey *string) (*external.SendPromptResult, error) {
+func (c *GoogleConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *string) (*external.SendPromptResult, error) {
 	respData := GeminiResponse{}
 	if err := json.Unmarshal(resp, &respData); err != nil {
 		return nil, fmt.Errorf("error unmarshalling response: %w", err)
@@ -89,8 +99,9 @@ func (c *GoogleConnector) GetPromptResult(resp []byte, cacheKey *string) (*exter
 			InputTokens:  respData.UsageMetadata.PromptTokenCount,
 			OutputTokens: respData.UsageMetadata.CandidatesTokenCount,
 		},
-		Content:  respData.Candidates[0].Content.Parts[0].Text,
-		CacheKey: cacheKey,
+		Content:   respData.Candidates[0].Content.Parts[0].Text,
+		CacheKey:  cacheKey,
+		UsedCache: isCached,
 	}, nil
 }
 

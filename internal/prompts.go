@@ -1,4 +1,11 @@
-package common
+package internal
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/Sph3ricalPeter/frbench/internal/project"
+)
 
 const (
 	SystemPrompt = `You are a software engineer in an agile team tasked to create an issue-tracker application in Golang.
@@ -68,3 +75,44 @@ func TestGetTextLength(t *testing.T) {
 )
 
 const SystemPromptSWEBenchLike = `You will be provided with a partial codebase inside the app/ directory and an issue statement explaining what needs to be changed in that codebase.`
+
+func PreparePatchPrompt(projectInfo project.ProjectInfo, i int) ([]byte, error) {
+	requirement := projectInfo.Project.Requirements[i]
+	codebase, err := project.LoadCodebase()
+	if err != nil {
+		return nil, fmt.Errorf("error loading codebase: %w", err)
+	}
+	prompt := `You will be provided with a full codebase inside the app/ directory and an issue statement explaining what needs to be changed in that codebase. The changes made need to make all provided tests pass but you can't change any tests.
+<issue>
+%s
+</issue>
+<codebase>
+%s
+</codebase>
+Here is an example of a patch file. It consists of changes to files in the codebase. It specifies the file names, the line numbers of each change, and the removed and added lines. A single patch file can contain changes to multiple files.
+<patch>
+--- a/app/file.go
++++ b/app/file.go
+@@ -1,8 +1,8 @@
+ package main
+ 
+ func Euclidean(a, b int) int {
+-	for b != 0 {
+-		a, b = b, a/b
++	if b == 0 {
++		return a
+ 	}
+-	return a
++	return Euclidean(b, a/b)
+ }
+
+</patch>
+I need you to implement the required changes by generating a single patch file that can be applied directly using git apply. Please respond with a single patch file in the format shown above. Don't add any additional text or comments only the patch file contents.
+Respond below:
+`
+
+	ret := []byte(fmt.Sprintf(prompt, requirement.Description, codebase))
+	_ = os.WriteFile("data/prompt.txt", ret, 0644)
+
+	return ret, nil
+}
