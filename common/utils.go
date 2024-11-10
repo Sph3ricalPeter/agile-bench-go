@@ -27,6 +27,8 @@ func WritePatchFile(patch []byte, fpath string) ([]byte, error) {
 	// remove occurrences of ```diff and ``` from the patch
 	newPatch = strings.ReplaceAll(newPatch, "```diff\n", "")
 	newPatch = strings.ReplaceAll(newPatch, "```\n", "")
+	newPatch = strings.ReplaceAll(newPatch, "<patch>\n", "")
+	newPatch = strings.ReplaceAll(newPatch, "</patch>\n", "")
 
 	err := os.WriteFile(fpath, []byte(newPatch), 0644)
 	if err != nil {

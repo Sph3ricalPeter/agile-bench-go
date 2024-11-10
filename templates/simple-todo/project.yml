@@ -1,0 +1,13 @@
+project:
+  name: "Simple TODO app"
+  description: "Simple TODO app with in-memory storage"
+  # context: "The idea is that maybe if the models struggle with an empty main file
+  #   as a start, the readme would help them get started."
+  requirements:
+  - description: Implement a getMessage() function which returns a hello message
+      which passes the test.
+    tests:
+    - 1_test.go
+  - description: App should use in-memory storage and support adding TODOs.
+    tests:
+    - 2_test.go

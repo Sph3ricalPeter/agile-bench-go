@@ -67,6 +67,4 @@ func TestGetTextLength(t *testing.T) {
 `
 )
 
-const SystemPromptGemini = `
-Given the following functional requirement and test, create a main.go file that passes this test:
-`
+const SystemPromptSWEBenchLike = `You will be provided with a partial codebase inside the app/ directory and an issue statement explaining what needs to be changed in that codebase.`

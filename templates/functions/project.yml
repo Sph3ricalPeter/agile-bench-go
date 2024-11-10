@@ -1,0 +1,15 @@
+project:
+  name: "Functions"
+  description: "A library of independent functions"
+  # context: "The idea is that maybe if the models struggle with an empty main file
+  #   as a start, the readme would help them get started."
+  requirements:
+  - description: Implement the 'add' function which will take two integers and
+      return their sum.
+    # hint: "Use fmt.Println to print the message."
+    tests:
+    - 1_test.go
+  - description: Implement the 'subtract' function which will take two integers and
+      return their difference.
+    tests:
+    - 2_test.go

@@ -1,10 +1,8 @@
-// 3_test.go
 package main
 
 import "testing"
 
-// FR3: App should use in-memory storage and support adding TODOs
-func TestAddTodo_3(t *testing.T) {
+func TestAddTodo(t *testing.T) {
 	storage := Storage{}
 
 	want := "Buy milk"

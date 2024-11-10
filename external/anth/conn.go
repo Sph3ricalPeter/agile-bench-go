@@ -45,7 +45,7 @@ func (c *AnthConnector) SendPrompt(pd external.SendPromptData) (*external.SendPr
 	}
 
 	promptMsg := NewMessage(apd.Role, string(pd.Prompt))
-	reqPayload := NewRequest(c.model, MaxTokens, common.SystemPrompt, append(c.history, promptMsg))
+	reqPayload := NewRequest(c.model, MaxTokens, "", append(c.history, promptMsg))
 
 	reqBody := bytes.NewBuffer([]byte{})
 	json.NewEncoder(reqBody).Encode(reqPayload)

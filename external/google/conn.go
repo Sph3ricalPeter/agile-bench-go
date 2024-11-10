@@ -38,7 +38,7 @@ func (c *GoogleConnector) SendPrompt(pd external.SendPromptData) (*external.Send
 	}
 
 	promptMsg := NewGeminiMessage(gpd.Role, string(pd.Prompt))
-	reqPayload := NewGeminiRequest(common.SystemPromptGemini, append(c.history, promptMsg))
+	reqPayload := NewGeminiRequest(common.SystemPromptSWEBenchLike, append(c.history, promptMsg))
 
 	reqBody := bytes.NewBuffer([]byte{})
 	json.NewEncoder(reqBody).Encode(reqPayload)
