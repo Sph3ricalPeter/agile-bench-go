@@ -18,10 +18,7 @@ func TestLoadCodebase(t *testing.T) {
 }
 
 func TestInitProject(t *testing.T) {
-	err := project.InitProject("simple-todo")
-	if err != nil {
-		t.Fatalf("error initializing project: %s", err.Error())
-	}
+	project.MustInitProject("simple-todo")
 }
 
 func TestPreparePrompt(t *testing.T) {
@@ -37,5 +34,13 @@ func TestPreparePrompt(t *testing.T) {
 	}, 0)
 	if err != nil {
 		t.Fatalf("error preparing prompt: %s", err.Error())
+	}
+}
+
+func TestParseWriteResponse(t *testing.T) {
+	exampleBlock := "```go\n// start of lib.go\npackage main\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n// end of lib.go\n// start of calc.go\npackage main\n\nimport \"fmt\"\n\nfunc main() {\n\tres := add(2, 3)\n\tfmt.Println(res)\n}\n// end of calc.go\n```\n"
+	_, err := internal.ParseWriteResponse([]byte(exampleBlock))
+	if err != nil {
+		t.Fatalf("error parsing write response: %s", err.Error())
 	}
 }

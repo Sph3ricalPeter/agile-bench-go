@@ -6,11 +6,40 @@ import (
 	"os"
 
 	"github.com/Sph3ricalPeter/frbench/external"
-	"github.com/Sph3ricalPeter/frbench/external/google"
+	"github.com/Sph3ricalPeter/frbench/external/anth"
 	"github.com/Sph3ricalPeter/frbench/internal"
 	"github.com/Sph3ricalPeter/frbench/internal/common"
 	"github.com/Sph3ricalPeter/frbench/internal/project"
 )
+
+type ProjectTemplate string
+
+const (
+	ProjectFunctions  ProjectTemplate = "functions"
+	ProjectSimpleTodo ProjectTemplate = "simple-todo"
+)
+
+type Mode string
+
+const (
+	ModePatchInc Mode = "patch-inc" // patches are applied incrementally for each FR to the codebase
+	ModeWriteInc Mode = "write-inc" // writing files instead of patching, also incrementally
+	ModeWrite    Mode = "write"     // writing files to a clean codebase for each requirement
+)
+
+type Args struct {
+	template ProjectTemplate
+	mode     Mode
+	useCache bool
+}
+
+func NewArgs(template ProjectTemplate, mode Mode, useCache bool) Args {
+	return Args{
+		template: template,
+		mode:     mode,
+		useCache: useCache,
+	}
+}
 
 type ModelBenchmark struct {
 	con   external.Connector
@@ -26,98 +55,208 @@ func NewModelBenchmark(con external.Connector) ModelBenchmark {
 
 func main() {
 	// read cache flag from args
-	useCache := flag.Bool("c", false, "use cache")
+	tArg := flag.String("t", "functions", "project template to use (functions | simple-todo)")
+	mArg := flag.String("m", "write-inc", "mode to run (patch-inc | write-inc | write)")
+	cArg := flag.Bool("c", false, "use cache")
 	flag.Parse()
+	args := NewArgs(ProjectTemplate(*tArg), Mode(*mArg), *cArg)
+	fmt.Printf("Running with args: %+v\n", args)
 
 	models := []ModelBenchmark{
-		NewModelBenchmark(google.NewGoogleConnector(google.Gemini15Flash8B, "")),
-		// NewModelBenchmark(anth.NewAnthConnector(anth.Claude3Haiku, "")),
+		// NewModelBenchmark(google.NewGoogleConnector(google.Gemini15Flash8B, "")),
+		NewModelBenchmark(anth.NewAnthConnector(anth.Claude3Haiku, "")),
 	}
 
 	// 1. copy the initial codebase for the project
-	projectName := "functions"
-	project.MustInitProject(projectName)
+	project.MustInitProject(string(args.template))
 
 	// 2. read project.yml and load the project info
-	projectInfo := project.MustLoadFromYaml(projectName)
+	projectInfo := project.MustLoadFromYaml(string(args.template))
 
+	for _, model := range models {
+		switch args.mode {
+		case ModePatchInc:
+			runIncPatchProcedure(args, model, projectInfo)
+		case ModeWriteInc:
+			runIncWriteProcedure(args, model, projectInfo)
+		default:
+			panic("invalid mode")
+		}
+	}
+}
+
+// runIncWriteProcedure runs the incremental writing procedure for the given model and project,
+//
+// each requirement will send a prompt and the expected response is a string containing all changed files
+// which will be written to the project's codebase
+// still works incrementally in that each requirement will build on the previous one, working with the updated codebase
+func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.ProjectInfo) {
+	reqCount := len(projectInfo.Project.Requirements)
+
+	invalidRespCacheKeys := map[int]*string{}
+	fmt.Printf("Running write procedure for model %s on project %s ...\n", model.con.GetModelName(), projectInfo.Project.Name)
+	for i := 0; i < reqCount; i++ {
+		req := projectInfo.Project.Requirements[i]
+		fmt.Printf("Running requirement #%d: %s ...\n", i, req.Name)
+
+		err := copyTestFile(projectInfo.Dir, i+1)
+		if err != nil {
+			fmt.Printf("error copying test file: %s\n", err)
+			break
+		}
+
+		err = runTests()
+		if err == nil {
+			panic("test passed before patching")
+		}
+
+		promptBytes, err := internal.PrepareWritePrompt(projectInfo, i)
+		if err != nil {
+			fmt.Printf("error preparing prompt: %s\n", err.Error())
+			break
+		}
+		fmt.Println("Sending prompt ...")
+		result, err := model.con.SendPrompt(external.SendPromptOpts{
+			Number:     i + 1,
+			Role:       external.RoleUser,
+			Prompt:     promptBytes,
+			UseCache:   args.useCache,
+			UseHistory: false,
+		})
+		if err != nil {
+			fmt.Printf("error sending prompt: %s\n", err.Error())
+			break
+		}
+		if result.UsedCache {
+			fmt.Printf("Used cache: %s\n", *result.CacheKey)
+		} else {
+			fmt.Printf("Used %d input / %d output tokens.\n", result.Usage.InputTokens, result.Usage.OutputTokens)
+		}
+		fmt.Println("OK.")
+
+		files, err := internal.ParseWriteResponse([]byte(result.Content))
+		if err != nil {
+			fmt.Printf("error parsing write response: %s\n", err.Error())
+			break
+		}
+
+		for _, file := range files {
+			err = os.WriteFile(fmt.Sprintf("app/%s", file.Name), file.Content, 0644)
+			if err != nil {
+				fmt.Printf("error writing file: %s\n", err.Error())
+			}
+		}
+
+		err = runTests()
+		if err != nil {
+			fmt.Println("NOK! ❌")
+			invalidRespCacheKeys[i] = result.CacheKey
+			break
+		} else {
+			fmt.Println("OK! ✅")
+			model.stats[projectInfo.Project.Name]++
+		}
+
+		// wait for input to revert patches
+		fmt.Println("Press ENTER to do next requirement or exit if it's the last one ...")
+		_, _ = os.Stdin.Read(make([]byte, 1))
+	}
+
+	fmt.Printf("All Done! %s scored: %d/%d on the %s project!\n", model.con.GetModelName(), model.stats[projectInfo.Project.Name], reqCount, projectInfo.Project.Name)
+
+	// prompt is the key for the cache
+	for i, cacheKey := range invalidRespCacheKeys {
+		if cacheKey == nil {
+			continue
+		}
+		fmt.Printf("Removing cache for invalid resp. #%d ...\n", i)
+		common.CheckErr(model.con.InvalidateCachedPrompt(*cacheKey))
+	}
+}
+
+// runIncPatchProcedure runs the patching procedure for the given model and project,
+//
+// each requirement is patched and tested incrementally, with the option to use history to
+// send previous prompts and model's responses (similar to a chat conversation)
+func runIncPatchProcedure(args Args, model ModelBenchmark, projectInfo project.ProjectInfo) {
 	appliedPatches := map[int][]byte{}
 	invalidPatchCacheKeys := map[int]*string{}
+
 	reqCount := len(projectInfo.Project.Requirements)
-	for _, model := range models {
-		for i := 1; i < reqCount+1; i++ {
-			fmt.Printf("Running requirement #%d: %s on model %s ...\n", i, projectInfo.Project.Requirements[i-1].Name, model.con.GetModelName())
+	for i := 1; i < reqCount+1; i++ {
+		fmt.Printf("Running requirement #%d: %s on model %s ...\n", i, projectInfo.Project.Requirements[i-1].Name, model.con.GetModelName())
 
-			// move test file before prompt is created with codebase inside
-			err := copyTestFile(i)
-			if err != nil {
-				fmt.Printf("error copying test file: %s\n", err)
-				break
-			}
-
-			// tests should fail before patching
-			err = runTests()
-			if err == nil {
-				panic("test passed before patching")
-			}
-
-			promptBytes, err := internal.PreparePatchPrompt(projectInfo, i-1)
-			if err != nil {
-				fmt.Printf("error reading test file: %s\n", err.Error())
-				break
-			}
-			fmt.Println("Sending prompt ...")
-			result, err := model.con.SendPrompt(external.SendPromptOpts{
-				Number:   i,
-				Role:     external.RoleUser,
-				Prompt:   promptBytes,
-				UseCache: *useCache,
-				// FIXME: we are sending the whole codebase with each prompt and not using history
-				UseHistory: false,
-			})
-			if err != nil {
-				fmt.Printf("error sending prompt: %s\n", err.Error())
-				break
-			}
-			fmt.Println("OK.")
-			if result.CacheKey == nil {
-				fmt.Printf("Used %d input / %d output tokens.\n", result.Usage.InputTokens, result.Usage.OutputTokens)
-			}
-
-			updatedPatch, err := internal.Patch([]byte(result.Content), i)
-			if err != nil {
-				fmt.Printf("error doing patch: %s\n", err.Error())
-				invalidPatchCacheKeys[i] = result.CacheKey
-				break
-			}
-			cleanupWeirdFiles()
-			appliedPatches[i] = updatedPatch
-
-			err = runTests()
-			if err != nil {
-				fmt.Println("Patch BAD! ❌")
-				invalidPatchCacheKeys[i] = result.CacheKey
-				break
-			} else {
-				fmt.Println("Patch OK! ✅")
-				model.stats[projectInfo.Project.Name]++
-			}
-
-			// wait for input to revert patches
-			fmt.Println("Press ENTER to do next patch or revert if it's the last one ...")
-			_, _ = os.Stdin.Read(make([]byte, 1))
+		// move test file before prompt is created with codebase inside
+		err := copyTestFile(projectInfo.Dir, i)
+		if err != nil {
+			fmt.Printf("error copying test file: %s\n", err)
+			break
 		}
 
-		fmt.Printf("All Done! %s scored: %d/%d\n", model.con.GetModelName(), model.stats[projectInfo.Project.Name], reqCount)
-
-		// prompt is the key for the cache
-		for i, cacheKey := range invalidPatchCacheKeys {
-			if cacheKey == nil {
-				continue
-			}
-			fmt.Printf("Removing cache for invalid patch #%d ...\n", i)
-			common.CheckErr(model.con.InvalidateCachedPrompt(*cacheKey))
+		// tests should fail before patching
+		err = runTests()
+		if err == nil {
+			panic("test passed before patching")
 		}
+
+		promptBytes, err := internal.PreparePatchPrompt(projectInfo, i-1)
+		if err != nil {
+			fmt.Printf("error reading test file: %s\n", err.Error())
+			break
+		}
+		fmt.Println("Sending prompt ...")
+		result, err := model.con.SendPrompt(external.SendPromptOpts{
+			Number:   i,
+			Role:     external.RoleUser,
+			Prompt:   promptBytes,
+			UseCache: args.useCache,
+			// FIXME: we are sending the whole codebase with each prompt and not using history
+			UseHistory: false,
+		})
+		if err != nil {
+			fmt.Printf("error sending prompt: %s\n", err.Error())
+			break
+		}
+		if result.UsedCache {
+			fmt.Printf("Used cache: %s\n", *result.CacheKey)
+		} else {
+			fmt.Printf("Used %d input / %d output tokens.\n", result.Usage.InputTokens, result.Usage.OutputTokens)
+		}
+		fmt.Println("OK.")
+
+		updatedPatch, err := internal.Patch([]byte(result.Content), i)
+		if err != nil {
+			fmt.Printf("error doing patch: %s\n", err.Error())
+			invalidPatchCacheKeys[i] = result.CacheKey
+			break
+		}
+		cleanupWeirdFiles()
+		appliedPatches[i] = updatedPatch
+
+		err = runTests()
+		if err != nil {
+			fmt.Println("Patch BAD! ❌")
+			invalidPatchCacheKeys[i] = result.CacheKey
+			break
+		} else {
+			fmt.Println("Patch OK! ✅")
+			model.stats[projectInfo.Project.Name]++
+		}
+
+		// wait for input to revert patches
+		fmt.Println("Press ENTER to do next patch or revert if it's the last one ...")
+		_, _ = os.Stdin.Read(make([]byte, 1))
+	}
+
+	fmt.Printf("All Done! %s scored: %d/%d\n", model.con.GetModelName(), model.stats[projectInfo.Project.Name], reqCount)
+
+	// prompt is the key for the cache
+	for i, cacheKey := range invalidPatchCacheKeys {
+		if cacheKey == nil {
+			continue
+		}
+		fmt.Printf("Removing cache for invalid patch #%d ...\n", i)
+		common.CheckErr(model.con.InvalidateCachedPrompt(*cacheKey))
 	}
 }
 
@@ -129,10 +268,10 @@ func cleanupWeirdFiles() {
 	}
 }
 
-func copyTestFile(i int) error {
-	return common.RunCommand(fmt.Sprintf("cp templates/functions/reference/%d_test.go app/", i))
+func copyTestFile(dir string, i int) error {
+	return common.RunCommand(fmt.Sprintf("cp templates/%s/reference/%d_test.go app/", dir, i))
 }
 
 func runTests() error {
-	return common.RunCommand("go test -v ./app/")
+	return common.RunCommand("go test ./app/")
 }

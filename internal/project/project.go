@@ -9,6 +9,7 @@ import (
 )
 
 type ProjectInfo struct {
+	Dir     string
 	Project Project
 }
 
@@ -34,6 +35,7 @@ func MustLoadFromYaml(projectName string) ProjectInfo {
 	if err != nil {
 		panic(fmt.Errorf("error unmarshalling project.yml: %w", err))
 	}
+	projectInfo.Dir = projectName
 	return projectInfo
 }
 

@@ -2,9 +2,18 @@ project:
   name: "Functions"
   description: "A library of independent functions"
   requirements:
-  - name: "Add function"
+  - name: "add function"
     description: Implement the 'add' function which will take two integers and
       return their sum.
-  - name: "Subtract function"
+  - name: "subtract function"
     description: Implement the 'subtract' function which will take two integers and
       return their difference.
+  - name: "fib function"
+    description: Implement the 'fib' function which will take an integer and return
+      the nth number in the Fibonacci sequence.
+  - name: "split function"
+    description: Using the std library, implement the 'split' function which will
+      take a string and a separator string and return a list of substrings.
+  - name: "custom split function"
+    description: Implement the 'splitCustom' function which will take a string and a
+      separator string and return a list of substrings.

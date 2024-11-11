@@ -24,5 +24,5 @@ func main() {
 }
 
 func getMessage() string {
-	return "Hello World!"
+	return "This will be a TODO list!"
 }

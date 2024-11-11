@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"github.com/Sph3ricalPeter/frbench/internal/project"
 )
@@ -107,7 +108,7 @@ Here is an example of a patch file. It consists of changes to files in the codeb
  }
 
 </patch>
-I need you to implement the required changes by generating a single patch file that can be applied directly using git apply. Please respond with a single patch file in the format shown above. Don't add any additional text or comments only the patch file contents.
+I need you to implement the required changes and only the required changes by generating a single patch file that can be applied directly using git apply. Please respond with a single patch file in the format shown above. Don't add any additional text or comments only the patch file contents.
 Respond below:
 `
 
@@ -115,4 +116,84 @@ Respond below:
 	_ = os.WriteFile("data/prompt.txt", ret, 0644)
 
 	return ret, nil
+}
+
+func PrepareWritePrompt(projectInfo project.ProjectInfo, i int) ([]byte, error) {
+	requirement := projectInfo.Project.Requirements[i]
+	codebase, err := project.LoadCodebase()
+	if err != nil {
+		return nil, fmt.Errorf("error loading codebase: %w", err)
+	}
+	blockMark := "```"
+	prompt := `You will be provided with a partial codebase inside the app/ directory and an issue statement explaining what needs to be changed in that codebase. The changes made need to make all provided tests pass but you can't change or add any tests.
+<issue>
+%s
+</issue>
+<codebase>
+%s
+</codebase>
+Here is an example of a generated list of files. It consists of code blocks annotated with the language. Comments specify the start and end of each file and its name.
+<files>
+%sgo
+// start of file.go
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(getNumber())
+}
+// end of file.go
+// start of numbers.go
+package main
+
+func getNumber() int {
+	return 7
+}
+// end of numbers.go
+%s
+</files>
+I need you to implement changes needed to solve the issue and provide all files changed in the format shown above. Please respond with a list of non-test files in the format shown above. Don't add any additional text or comments only the file contents.
+Respond below:
+`
+
+	ret := []byte(fmt.Sprintf(prompt, requirement.Description, codebase, blockMark, blockMark))
+	_ = os.WriteFile("data/prompt.txt", ret, 0644)
+
+	return ret, nil
+}
+
+type File struct {
+	Name    string
+	Content []byte
+}
+
+// ParseWriteResponse parses the response from the user and extracts the file contents
+//
+// file contents are inside ``` blocks and annotated with // start of file.go and // end of file.go
+// we need to extract the contents of the blocks and write them to files
+// use regex ```((.|\n)*)``` to extract the blocks
+func ParseWriteResponse(content []byte) ([]File, error) {
+	re := regexp.MustCompile("```go\n((.|\n)*)```")
+	matches := re.FindAllSubmatch(content, -1)
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no file contents found")
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("multiple file contents found")
+	}
+	file := matches[0][1]
+	re = regexp.MustCompile("(\\/\\/ start of )(.*\\..*)\n((.|\n)*?)(\\/\\/ end)")
+	matches = re.FindAllSubmatch(file, -1)
+	var files []File
+	for _, match := range matches {
+		newFile := File{
+			Name:    string(match[2]),
+			Content: match[3],
+		}
+		files = append(files, newFile)
+		fmt.Printf("file: '%s'\ncontent: '\n%s'\n", match[2], match[3])
+		// _ = os.WriteFile("data/"+newFile.Name, newFile.Content, 0644)
+	}
+	return files, nil
 }

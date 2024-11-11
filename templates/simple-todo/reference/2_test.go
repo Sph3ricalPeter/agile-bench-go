@@ -10,6 +10,6 @@ func TestAddTodo(t *testing.T) {
 
 	got := storage.getTodos()[0]
 	if want != got {
-		t.Fatalf("want %d, got %d", want, got)
+		t.Fatalf("want %s, got %s", want, got)
 	}
 }

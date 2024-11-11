@@ -1,5 +1,3 @@
 package main
 
-func add(a, b int) int {
-	return 0
-}
+// library of independent functions
