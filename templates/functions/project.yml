@@ -1,6 +1,7 @@
 project:
   name: "Functions"
   description: "A library of independent functions"
+  type: "single"
   requirements:
   - name: "add function"
     description: Implement the 'add' function which will take two integers and

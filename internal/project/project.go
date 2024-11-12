@@ -13,9 +13,17 @@ type ProjectInfo struct {
 	Project Project
 }
 
+type ProjectType string
+
+const (
+	ProjectTypeSingle      ProjectType = "single"      // single main.go file project, all tests should always pass
+	ProjectTypeCheckpoints ProjectType = "checkpoints" // project with possible breaking changes, requiring checkpoints with different tests
+)
+
 type Project struct {
 	Name         string
 	Description  string
+	Type         ProjectType
 	Requirements []Requirement
 }
 
@@ -25,8 +33,8 @@ type Requirement struct {
 	Tests       []string
 }
 
-func MustLoadFromYaml(projectName string) ProjectInfo {
-	projectYml, err := os.ReadFile(fmt.Sprintf("templates/%s/project.yml", projectName))
+func MustLoadFromYaml(projectDir string) ProjectInfo {
+	projectYml, err := os.ReadFile(fmt.Sprintf("templates/%s/project.yml", projectDir))
 	if err != nil {
 		panic(fmt.Errorf("error reading project.yml: %w", err))
 	}
@@ -35,7 +43,7 @@ func MustLoadFromYaml(projectName string) ProjectInfo {
 	if err != nil {
 		panic(fmt.Errorf("error unmarshalling project.yml: %w", err))
 	}
-	projectInfo.Dir = projectName
+	projectInfo.Dir = projectDir
 	return projectInfo
 }
 

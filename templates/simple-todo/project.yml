@@ -1,6 +1,7 @@
 project:
   name: "Simple TODO app"
   description: "Simple TODO app with in-memory storage"
+  type: "checkpoints"
   requirements:
   - name: "Printing a welcome message"
     description: Implement a 'getMessage' function that returns the 'Welcome to a
@@ -9,3 +10,9 @@ project:
     description: Introduce an in-memory storage to store TODOs as strings. Implement
       a 'addTodo' method that adds a new TODO to the storage and a 'getTodos'
       method which returns all the TODOs.
+  - name: "Removing TODOs"
+    description: Implement a 'removeTodo' method that removes a TODO from the storage.
+  - name: "Marking TODOs as done"
+    description: Implement a 'markTodoAsDone' method that marks a TODO as done.
+      TODOs should now be an object. Refactor the codebase to support this
+      change and use uuid library for todo ids.

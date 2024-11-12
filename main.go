@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/Sph3ricalPeter/frbench/external"
-	"github.com/Sph3ricalPeter/frbench/external/anth"
+	"github.com/Sph3ricalPeter/frbench/external/google"
 	"github.com/Sph3ricalPeter/frbench/internal"
 	"github.com/Sph3ricalPeter/frbench/internal/common"
 	"github.com/Sph3ricalPeter/frbench/internal/project"
@@ -63,8 +63,8 @@ func main() {
 	fmt.Printf("Running with args: %+v\n", args)
 
 	models := []ModelBenchmark{
-		// NewModelBenchmark(google.NewGoogleConnector(google.Gemini15Flash8B, "")),
-		NewModelBenchmark(anth.NewAnthConnector(anth.Claude3Haiku, "")),
+		NewModelBenchmark(google.NewGoogleConnector(google.Gemini15Flash8B, "")),
+		// NewModelBenchmark(anth.NewAnthConnector(anth.Claude3Haiku, "")),
 	}
 
 	// 1. copy the initial codebase for the project
@@ -99,7 +99,7 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 		req := projectInfo.Project.Requirements[i]
 		fmt.Printf("Running requirement #%d: %s ...\n", i, req.Name)
 
-		err := copyTestFile(projectInfo.Dir, i+1)
+		err := copyTestFiles(projectInfo.Dir, projectInfo.Project.Type, i+1)
 		if err != nil {
 			fmt.Printf("error copying test file: %s\n", err)
 			break
@@ -187,7 +187,7 @@ func runIncPatchProcedure(args Args, model ModelBenchmark, projectInfo project.P
 		fmt.Printf("Running requirement #%d: %s on model %s ...\n", i, projectInfo.Project.Requirements[i-1].Name, model.con.GetModelName())
 
 		// move test file before prompt is created with codebase inside
-		err := copyTestFile(projectInfo.Dir, i)
+		err := copyTestFiles(projectInfo.Dir, projectInfo.Project.Type, i)
 		if err != nil {
 			fmt.Printf("error copying test file: %s\n", err)
 			break
@@ -268,8 +268,26 @@ func cleanupWeirdFiles() {
 	}
 }
 
-func copyTestFile(dir string, i int) error {
-	return common.RunCommand(fmt.Sprintf("cp templates/%s/reference/%d_test.go app/", dir, i))
+// copyTestFile copies the test file for the given requirement number to the app/ directory
+//
+// depending on the project type, the test file is copied from the reference directory
+// for single projects, the test file is copied directly
+// for checkpoint projects, all test files for the given checkpoint are copied and the existing test files are removed
+func copyTestFiles(templateDir string, projectType project.ProjectType, reqN int) error {
+	switch projectType {
+	case project.ProjectTypeSingle:
+		// single test for a given requirement number is copied
+		return common.RunCommand(fmt.Sprintf("cp templates/%s/reference/%d_test.go app/", templateDir, reqN))
+	case project.ProjectTypeCheckpoints:
+		// all existing test files are removed (in case of breaking changes)
+		err := common.RunBashCommand("rm -f app/*_test.go")
+		if err != nil {
+			return fmt.Errorf("error removing test files: %w", err)
+		}
+		// all test files for the given checkpoint are copied
+		return common.RunBashCommand(fmt.Sprintf("cp templates/%s/reference/%d/*_test.go app/", templateDir, reqN))
+	}
+	return fmt.Errorf("invalid project type")
 }
 
 func runTests() error {
