@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/external/google"
@@ -141,7 +142,13 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 		}
 
 		for _, file := range files {
-			err = os.WriteFile(fmt.Sprintf("app/%s", file.Name), file.Content, 0644)
+			path := filepath.Join("app/", file.RelPath)
+			err := os.MkdirAll(filepath.Dir(path), os.ModePerm)
+			if err != nil {
+				fmt.Printf("error creating app directory: %s\n", err.Error())
+				break
+			}
+			err = os.WriteFile(fmt.Sprintf("app/%s", file.RelPath), file.Content, 0644)
 			if err != nil {
 				fmt.Printf("error writing file: %s\n", err.Error())
 			}

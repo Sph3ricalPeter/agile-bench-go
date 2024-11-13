@@ -1,0 +1,12 @@
+project:
+  name: "Simple website app"
+  description: "Simple SSR website app"
+  type: "checkpoints"
+  requirements:
+  - name: "GET alive endpoint"
+    description: Implement a GET '/api/v1/alive' endpoint which return a 204
+      response with no body
+  - name: "Homepage with a welcome message"
+    description: Implement a GET '/' endpoint which returns a simple HTML page with
+      a welcome message in a H1 header. The message should be 'Welcome to simple
+      website!'. Use the 'templates/' directory to store html files.

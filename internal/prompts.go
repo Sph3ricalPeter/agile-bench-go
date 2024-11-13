@@ -164,7 +164,7 @@ Respond below:
 }
 
 type File struct {
-	Name    string
+	RelPath string
 	Content []byte
 }
 
@@ -188,7 +188,7 @@ func ParseWriteResponse(content []byte) ([]File, error) {
 	var files []File
 	for _, match := range matches {
 		newFile := File{
-			Name:    string(match[2]),
+			RelPath: string(match[2]),
 			Content: match[3],
 		}
 		files = append(files, newFile)
