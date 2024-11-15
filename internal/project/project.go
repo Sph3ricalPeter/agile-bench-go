@@ -30,7 +30,7 @@ type Project struct {
 type Requirement struct {
 	Name        string
 	Description string
-	Tests       []string
+	Attachments []string
 }
 
 func MustLoadFromYaml(projectDir string) ProjectInfo {

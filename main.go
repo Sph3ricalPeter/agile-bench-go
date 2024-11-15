@@ -1,17 +1,36 @@
 package main
 
 import (
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/Sph3ricalPeter/frbench/external"
+	"github.com/Sph3ricalPeter/frbench/external/anth"
 	"github.com/Sph3ricalPeter/frbench/external/google"
 	"github.com/Sph3ricalPeter/frbench/internal"
 	"github.com/Sph3ricalPeter/frbench/internal/common"
 	"github.com/Sph3ricalPeter/frbench/internal/project"
 )
+
+const (
+	Claude3HaikuUsdMtokIn  = 0.25
+	Claude3HaikuUsdMtokOut = 1.25
+	Million                = 1000000
+)
+
+func calcCost(model string, tokensIn int, tokensOut int) float64 {
+	switch model {
+	case string(anth.Claude3Haiku):
+		return Claude3HaikuUsdMtokIn*float64(tokensIn)/Million + Claude3HaikuUsdMtokOut*float64(tokensOut)/Million
+	case string(google.Gemini15Flash8B):
+		return -1
+	default:
+		return -1
+	}
+}
 
 type ProjectTemplate string
 
@@ -64,8 +83,8 @@ func main() {
 	fmt.Printf("Running with args: %+v\n", args)
 
 	models := []ModelBenchmark{
-		NewModelBenchmark(google.NewGoogleConnector(google.Gemini15Flash8B, "")),
-		// NewModelBenchmark(anth.NewAnthConnector(anth.Claude3Haiku, "")),
+		// NewModelBenchmark(google.NewGoogleConnector(google.Gemini15Flash8B, "")),
+		NewModelBenchmark(anth.NewAnthConnector(anth.Claude3Haiku, "")),
 	}
 
 	// 1. copy the initial codebase for the project
@@ -91,11 +110,12 @@ func main() {
 // each requirement will send a prompt and the expected response is a string containing all changed files
 // which will be written to the project's codebase
 // still works incrementally in that each requirement will build on the previous one, working with the updated codebase
-func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.ProjectInfo) {
+func runIncWriteProcedure(args Args, bench ModelBenchmark, projectInfo project.ProjectInfo) {
 	reqCount := len(projectInfo.Project.Requirements)
 
 	invalidRespCacheKeys := map[int]*string{}
-	fmt.Printf("Running write procedure for model %s on project %s ...\n", model.con.GetModelName(), projectInfo.Project.Name)
+	totalCost := float64(0)
+	fmt.Printf("Running write procedure for model %s on project %s ...\n", bench.con.GetModelName(), projectInfo.Project.Name)
 	for i := 0; i < reqCount; i++ {
 		req := projectInfo.Project.Requirements[i]
 		fmt.Printf("Running requirement #%d: %s ...\n", i, req.Name)
@@ -116,11 +136,25 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 			fmt.Printf("error preparing prompt: %s\n", err.Error())
 			break
 		}
+		var imageBytes []byte
+		if len(req.Attachments) > 0 {
+			imgPath := fmt.Sprintf("templates/%s/%s", projectInfo.Dir, req.Attachments[0])
+			fmt.Printf("Loading image from %s ...\n", imgPath)
+			imagePng, err := os.ReadFile(imgPath)
+			if err != nil {
+				fmt.Printf("error reading image: %s\n", err.Error())
+				break
+			}
+			imageBytes = []byte(base64.StdEncoding.EncodeToString(imagePng))
+			_ = os.WriteFile("data/image.png", imagePng, 0644)
+			fmt.Println("Image loaded.")
+		}
 		fmt.Println("Sending prompt ...")
-		result, err := model.con.SendPrompt(external.SendPromptOpts{
+		result, err := bench.con.SendPrompt(external.SendPromptOpts{
 			Number:     i + 1,
 			Role:       external.RoleUser,
 			Prompt:     promptBytes,
+			Image:      imageBytes,
 			UseCache:   args.useCache,
 			UseHistory: false,
 		})
@@ -132,6 +166,9 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 			fmt.Printf("Used cache: %s\n", *result.CacheKey)
 		} else {
 			fmt.Printf("Used %d input / %d output tokens.\n", result.Usage.InputTokens, result.Usage.OutputTokens)
+			cost := calcCost(bench.con.GetModelName(), result.Usage.InputTokens, result.Usage.OutputTokens)
+			fmt.Printf("Cost: $%.5f\n", cost)
+			totalCost += cost
 		}
 		fmt.Println("OK.")
 
@@ -161,7 +198,7 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 			break
 		} else {
 			fmt.Println("OK! ✅")
-			model.stats[projectInfo.Project.Name]++
+			bench.stats[projectInfo.Project.Name]++
 		}
 
 		// wait for input to revert patches
@@ -169,7 +206,8 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 		_, _ = os.Stdin.Read(make([]byte, 1))
 	}
 
-	fmt.Printf("All Done! %s scored: %d/%d on the %s project!\n", model.con.GetModelName(), model.stats[projectInfo.Project.Name], reqCount, projectInfo.Project.Name)
+	fmt.Printf("All Done! %s scored: %d/%d on the %s project!\n", bench.con.GetModelName(), bench.stats[projectInfo.Project.Name], reqCount, projectInfo.Project.Name)
+	fmt.Printf("Total cost for project: $%.5f\n", totalCost)
 
 	// prompt is the key for the cache
 	for i, cacheKey := range invalidRespCacheKeys {
@@ -177,7 +215,7 @@ func runIncWriteProcedure(args Args, model ModelBenchmark, projectInfo project.P
 			continue
 		}
 		fmt.Printf("Removing cache for invalid resp. #%d ...\n", i)
-		common.CheckErr(model.con.InvalidateCachedPrompt(*cacheKey))
+		common.CheckErr(bench.con.InvalidateCachedPrompt(*cacheKey))
 	}
 }
 

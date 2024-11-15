@@ -17,6 +17,7 @@ const (
 type SendPromptOpts struct {
 	Role       Role
 	Prompt     []byte
+	Image      []byte
 	Number     int
 	UseCache   bool
 	UseHistory bool

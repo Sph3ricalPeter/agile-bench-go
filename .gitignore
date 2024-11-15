@@ -24,8 +24,9 @@ go.work.sum
 # env file
 .env
 
-# IDEs
+# IDEs, OS
 .vscode/
+.DS_Store
 
 # project
 data/

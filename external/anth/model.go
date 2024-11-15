@@ -49,11 +49,42 @@ func mapPromptData(p external.SendPromptOpts) (*AnthPromptData, error) {
 }
 
 type AnthMessage struct {
-	Role    AnthRole `json:"role"`
-	Content string   `json:"content"`
+	Role    AnthRole             `json:"role"`
+	Content []AnthMessageContent `json:"content"`
 }
 
-func NewMessage(role AnthRole, content string) AnthMessage {
+type AnthMessageContent struct {
+	Type string `json:"type"`
+	// content is either text or source, not both
+	Text   string           `json:"text,omitempty"`
+	Source *AnthImageSource `json:"source,omitempty"`
+}
+
+func NewTextContent(text string) AnthMessageContent {
+	return AnthMessageContent{
+		Type: "text",
+		Text: text,
+	}
+}
+
+func NewImageContent(mediaType, data string) AnthMessageContent {
+	return AnthMessageContent{
+		Type: "image",
+		Source: &AnthImageSource{
+			Type:      "base64",
+			MediaType: mediaType,
+			Data:      data,
+		},
+	}
+}
+
+type AnthImageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+}
+
+func NewMessage(role AnthRole, content []AnthMessageContent) AnthMessage {
 	return AnthMessage{
 		Role:    role,
 		Content: content,

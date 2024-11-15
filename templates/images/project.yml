@@ -1,0 +1,9 @@
+project:
+  name: "Images experiment"
+  description: ""
+  type: "single"
+  requirements:
+  - name: "Generate a model"
+    description: "Generate a model accoding to UML diagram"
+    attachments: 
+      - assets/uml.png

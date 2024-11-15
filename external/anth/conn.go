@@ -46,7 +46,13 @@ func (c *AnthConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPr
 		return nil, fmt.Errorf("error mapping prompt data: %w", err)
 	}
 
-	promptMsg := NewMessage(apd.Role, string(pd.Prompt))
+	content := []AnthMessageContent{
+		NewTextContent(string(pd.Prompt)),
+	}
+	if pd.Image != nil {
+		content = append(content, NewImageContent("image/png", string(pd.Image)))
+	}
+	promptMsg := NewMessage(apd.Role, content)
 	var msgs []AnthMessage
 	if pd.UseHistory {
 		msgs = append(c.history, promptMsg)
@@ -98,10 +104,11 @@ func (c *AnthConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *st
 	}
 
 	// add response to the history
-	c.history = append(c.history, AnthMessage{
-		Role:    AnthRoleAssistant,
-		Content: respData.Content[0].Text,
-	})
+	// TODO: fix
+	// c.history = append(c.history, AnthMessage{
+	// 	Role:    AnthRoleAssistant,
+	// 	Content: respData.Content[0].Text,
+	// })
 
 	return &external.SendPromptResult{
 		RespBytes: resp,
