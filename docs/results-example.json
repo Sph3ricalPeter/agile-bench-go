@@ -1,0 +1,23 @@
+{
+    "benchmarks": [
+        {
+            "timestamp": "2021-09-01T00:00:00Z",
+            "models": {
+                "claude-3-haiku-20240307": {
+                    "projects": {
+                        "functions": {
+                            "requirements": [
+                                {
+                                    "cost": 0,
+                                    "completed": true,
+                                    "attempts": 1
+                                }
+                            ]
+                        }
+                    }
+                },
+                "gemini-1.5-flash-8b-exp-0827": {}
+            }
+        }
+    ]
+}

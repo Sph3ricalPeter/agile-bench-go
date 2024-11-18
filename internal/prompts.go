@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"regexp"
@@ -163,6 +164,22 @@ Respond below:
 	return ret, nil
 }
 
+// PrepareImagePrompt looks for attachments in the requirement and loads the first image,
+// if no image is found it returns an error, if there are no attachments it returns nil
+func PrepareImagePrompt(pInfo project.ProjectInfo, i int) ([]byte, error) {
+	req := pInfo.Project.Requirements[i]
+	if len(req.Attachments) > 0 {
+		imgPath := fmt.Sprintf("templates/%s/%s", pInfo.Dir, req.Attachments[0])
+		fmt.Printf("Loading image from %s ...\n", imgPath)
+		imagePng, err := os.ReadFile(imgPath)
+		if err != nil {
+			return nil, fmt.Errorf("error reading image: %w", err)
+		}
+		return []byte(base64.StdEncoding.EncodeToString(imagePng)), nil
+	}
+	return nil, nil
+}
+
 type File struct {
 	RelPath string
 	Content []byte
@@ -192,7 +209,7 @@ func ParseWriteResponse(content []byte) ([]File, error) {
 			Content: match[3],
 		}
 		files = append(files, newFile)
-		fmt.Printf("file: '%s'\ncontent: '\n%s'\n", match[2], match[3])
+		// fmt.Printf("file: '%s'\ncontent: '\n%s'\n", match[2], match[3])
 		// _ = os.WriteFile("data/"+newFile.Name, newFile.Content, 0644)
 	}
 	return files, nil

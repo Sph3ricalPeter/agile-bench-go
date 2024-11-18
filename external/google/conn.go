@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/internal"
@@ -15,6 +16,11 @@ import (
 
 var (
 	ApiKey = common.MustGetEnv("GOOGLE_API_KEY")
+)
+
+const (
+	QuotaResetWindowSeconds = 60
+	QuotaLimitWaitSeconds   = 5
 )
 
 type GoogleConnector struct {
@@ -29,7 +35,7 @@ func NewGoogleConnector(model GoogleModel, sysPrompt string) *GoogleConnector {
 		model:     model,
 		sysPrompt: sysPrompt,
 		history:   make([]GeminiMessage, 0),
-		cache:     internal.NewJsonCache("cache/google"),
+		cache:     internal.NewJsonCache("cache/google/" + string(model)),
 	}
 }
 
@@ -71,10 +77,6 @@ func (c *GoogleConnector) SendPrompt(pd external.SendPromptOpts) (*external.Send
 	// FIXME: testing only
 	_ = os.WriteFile(fmt.Sprintf("data/gemini-resp-%d.json", pd.Number), respBytes, 0644)
 
-	if err := c.cache.Put(cacheKey, respBytes); err != nil {
-		return nil, fmt.Errorf("error caching response: %w", err)
-	}
-
 	if pd.UseHistory {
 		c.history = append(c.history, promptMsg)
 	}
@@ -105,6 +107,10 @@ func (c *GoogleConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *
 	}, nil
 }
 
+func (c *GoogleConnector) CacheResponse(cacheKey string, respByte []byte) error {
+	return c.cache.Put(cacheKey, respByte)
+}
+
 func (c *GoogleConnector) InvalidateCachedPrompt(cacheKey string) error {
 	return c.cache.Delete(cacheKey)
 }
@@ -114,32 +120,44 @@ func (c *GoogleConnector) GetModelName() string {
 }
 
 func sendRequest(reqBody *bytes.Buffer, model GoogleModel) ([]byte, error) {
-	client := &http.Client{}
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, ApiKey)
-	req, err := http.NewRequest("POST", url, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-
-	req.Header.Add("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error sending prompt: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp GoogleErrorResponse
-		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
-			return nil, fmt.Errorf("unexpected response: code=%d, msg=%s", errResp.Error.Code, errResp.Error.Message)
+loop:
+	for i := 0; i < QuotaResetWindowSeconds/QuotaLimitWaitSeconds; i++ {
+		reqBodyCopy := bytes.NewBuffer(reqBody.Bytes())
+		client := &http.Client{}
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, ApiKey)
+		req, err := http.NewRequest("POST", url, reqBodyCopy)
+		if err != nil {
+			return nil, fmt.Errorf("error creating request: %w", err)
 		}
-		return nil, fmt.Errorf("unexpected response: %d", resp.StatusCode)
+
+		req.Header.Add("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("error sending prompt: %w", err)
+		}
+		defer resp.Body.Close()
+
+		switch resp.StatusCode {
+		case http.StatusTooManyRequests:
+			fmt.Printf("Too many requests, waiting %d seconds ...\n", QuotaLimitWaitSeconds)
+			time.Sleep(QuotaLimitWaitSeconds * time.Second)
+			continue loop
+		case http.StatusOK:
+			respBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("error reading response body: %w", err)
+			}
+			return respBytes, nil
+		default:
+			var errResp GoogleErrorResponse
+			if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
+				return nil, fmt.Errorf("unexpected response: code=%d, msg=%s", errResp.Error.Code, errResp.Error.Message)
+			}
+			return nil, fmt.Errorf("unexpected response: %d", resp.StatusCode)
+		}
+
 	}
 
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
-	}
-	return respBytes, nil
+	return nil, fmt.Errorf("failed to fetch response within %ds retry window", QuotaResetWindowSeconds)
 }

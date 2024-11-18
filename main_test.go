@@ -27,7 +27,6 @@ func TestPreparePrompt(t *testing.T) {
 			Requirements: []project.Requirement{
 				{
 					Description: "App should print out a message 'This will be a TODO app!' when started.",
-					Tests:       []string{"1_test.go"},
 				},
 			},
 		},

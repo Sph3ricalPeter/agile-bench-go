@@ -9,14 +9,16 @@ import (
 type AnthModel string
 
 const (
-	Claude35Haiku AnthModel = "claude-3-5-haiku-20241022"
-	Claude3Haiku  AnthModel = "claude-3-haiku-20240307"
+	Claude35Haiku  AnthModel = "claude-3-5-haiku-20241022"
+	Claude3Haiku   AnthModel = "claude-3-haiku-20240307"
+	Claude35Sonnet AnthModel = "claude-3-5-sonnet-20241022"
 )
 
 var (
 	StrToAnthModel = map[string]AnthModel{
-		"claude-3-5-haiku-20241022": Claude35Haiku,
-		"claude-3-haiku-20240307":   Claude3Haiku,
+		"claude-3-5-haiku-20241022":  Claude35Haiku,
+		"claude-3-haiku-20240307":    Claude3Haiku,
+		"claude-3-5-sonnet-20241022": Claude35Sonnet,
 	}
 )
 

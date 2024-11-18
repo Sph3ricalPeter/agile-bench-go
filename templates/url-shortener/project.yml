@@ -1,0 +1,17 @@
+project:
+  name: "Url shortener API"
+  description: "Small service app which allows anyone to shorten a real URL"
+  type: checkpoints
+  requirements:
+  - name: "In-memory url storage"
+    description: Implement a storage mechanism to store the original URL and the shortened URL in memory. Use sha1 hash to generate the shortened URL.
+    score: 3
+  - name: "GET /alive endpoint"
+    description: Implement a GET '/alive' endpoint which returns a 204 response with no body.
+    score: 2
+  # - name: "Url Storage"
+  #   description: Implement a storage mechanism to store the original URL and the shortened URL. Use sha1 hash to generate the shortened URL.
+  # - name: "GET /shorten endpoint"
+  #   description: Implement a POST '/shorten' endpoint which accepts a JSON object with a 'url' key and returns a shortened URL in a JSON object with 'short_url' key. The shortened URL should be unique.
+  # - name: "GET /:shortUrl endpoint"
+  #   description: Implement a GET '/:shortUrl' endpoint which redirects to the original URL.

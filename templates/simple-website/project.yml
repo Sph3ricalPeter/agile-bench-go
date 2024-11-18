@@ -4,9 +4,13 @@ project:
   type: "checkpoints"
   requirements:
   - name: "GET alive endpoint"
-    description: Implement a GET '/api/v1/alive' endpoint which return a 204
-      response with no body
+    description: Implement a GET '/api/v1/alive' endpoint which return a 204 response with no body
+    score: 2
   - name: "Homepage with a welcome message"
-    description: Implement a GET '/' endpoint which returns a simple HTML page with
-      a welcome message in a H1 header. The message should be 'Welcome to simple
-      website!'. Use the 'templates/' directory to store html files.
+    description: Implement a GET '/' endpoint which returns a simple HTML page with a welcome message in a H1 header. The message should be 'Welcome to simple website!'. Use the 'templates/' directory to store html files.
+    score: 3
+  - name: "Bootstrap template"
+    description: "Use Bootstrap imported via CDN to style the website. Add a top navigation links with 'Home', 'About' and 'Contact' links. Make sure it looks like in the provided image."
+    assets:
+    - assets/bs-menu.png
+    score: 4

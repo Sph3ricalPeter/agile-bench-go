@@ -12,6 +12,7 @@ const (
 	Gemini15Flash   GoogleModel = "gemini-1.5-flash-latest"
 	Gemini15Flash8B GoogleModel = "gemini-1.5-flash-8b-001"
 	Gemini10Pro     GoogleModel = "gemini-1.0-pro-001"
+	Gemini15Pro     GoogleModel = "gemini-1.5-pro-001"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 		"gemini-1.5-flash-latest": Gemini15Flash,
 		"gemini-1.5-flash-8b-001": Gemini15Flash8B,
 		"gemini-1.0-pro-001":      Gemini10Pro,
+		"gemini-1.5-pro-001":      Gemini15Pro,
 	}
 )
 

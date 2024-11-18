@@ -4,15 +4,23 @@ project:
   type: "checkpoints"
   requirements:
   - name: "Printing a welcome message"
-    description: Implement a 'getMessage' function that returns the 'Welcome to a
-      TODO list!'. Print the message when the app starts.
+    description: Implement a 'getMessage' function that returns the 'Welcome to a TODO list!'. Print the message when the app starts.
+    score: 1
   - name: "Adding TODOs"
-    description: Introduce an in-memory storage to store TODOs as strings. Implement
-      a 'addTodo' method that adds a new TODO to the storage and a 'getTodos'
-      method which returns all the TODOs.
+    description: Introduce an in-memory storage to store TODOs as strings. Implement a 'addTodo' method that adds a new TODO to the storage and a 'getTodos' method which returns all the TODOs.
+    score: 2
   - name: "Removing TODOs"
     description: Implement a 'removeTodo' method that removes a TODO from the storage.
+    score: 2
   - name: "Marking TODOs as done"
-    description: Implement a 'markTodoAsDone' method that marks a TODO as done.
-      TODOs should now be an object. Refactor the codebase to support this
-      change and use uuid library for todo ids.
+    description: Implement a 'markTodoAsDone' method that marks a TODO as done. TODOs should now be an object. Refactor the codebase to support this change and use uuid library for todo ids.
+    score: 2
+  - name: "Getting TODOs by status"
+    description: Implement a 'getTodosByStatus' method that returns all the TODOs by status. Update TODOs to support statuses 'open', 'doing' and 'done'. Allow todos to be marked as any status instead of just done.
+    score: 3
+  - name: "Printing TODOs"
+    description: "Implement a a method that writes all the TODOs in a formatted way. The format should be 'id: text (status)'. "
+    score: 3
+  - name: "CLI interface"
+    description: "Implement a CLI interface to interact with the TODO app. The CLI should support the following commands: 'add Text', 'remove id' 'list', 'exit'. Don't print anything additional to stdout. Also add the option to inject different id generators to the TODO storage."
+    score: 4

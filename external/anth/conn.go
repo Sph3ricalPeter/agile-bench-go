@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/internal"
@@ -18,7 +19,9 @@ var (
 )
 
 const (
-	MaxTokens = 2048
+	MaxTokens               = 2048
+	QuotaResetWindowSeconds = 60
+	QuotaLimitWaitSeconds   = 5
 )
 
 type AnthConnector struct {
@@ -33,7 +36,7 @@ func NewAnthConnector(model AnthModel, sysPrompt string) *AnthConnector {
 		model:     model,
 		sysPrompt: sysPrompt,
 		history:   make([]AnthMessage, 0),
-		cache:     internal.NewJsonCache("cache/anth"),
+		cache:     internal.NewJsonCache("cache/anth/" + string(model)),
 	}
 }
 
@@ -85,11 +88,6 @@ func (c *AnthConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPr
 	}
 	c.history = append(c.history, promptMsg)
 
-	err = c.cache.Put(cacheKey, respBytes)
-	if err != nil {
-		return nil, fmt.Errorf("error caching prompt: %w", err)
-	}
-
 	return c.GetPromptResult(respBytes, false, &cacheKey)
 }
 
@@ -122,6 +120,10 @@ func (c *AnthConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *st
 	}, nil
 }
 
+func (c *AnthConnector) CacheResponse(cacheKey string, respByte []byte) error {
+	return c.cache.Put(cacheKey, respByte)
+}
+
 func (c *AnthConnector) InvalidateCachedPrompt(cacheKey string) error {
 	return c.cache.Delete(cacheKey)
 }
@@ -131,33 +133,44 @@ func (c *AnthConnector) GetModelName() string {
 }
 
 func sendRequest(reqBody *bytes.Buffer) ([]byte, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
-	}
-
-	req.Header.Add("x-api-key", ApiKey)
-	req.Header.Add("anthropic-version", "2023-06-01")
-	req.Header.Add("content-type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error sending prompt: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp AnthErrorResponse
-		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
-			return nil, fmt.Errorf("unexpected response: code=%d, type=%s, msg=%s", resp.StatusCode, errResp.Error.Type, errResp.Error.Message)
+loop:
+	for i := 0; i < QuotaResetWindowSeconds/QuotaLimitWaitSeconds; i++ {
+		reqBodyCopy := bytes.NewBuffer(reqBody.Bytes())
+		client := &http.Client{}
+		req, err := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", reqBodyCopy)
+		if err != nil {
+			return nil, fmt.Errorf("error creating request: %w", err)
 		}
-		return nil, fmt.Errorf("unexpected response: code=%d", resp.StatusCode)
+
+		req.Header.Add("x-api-key", ApiKey)
+		req.Header.Add("anthropic-version", "2023-06-01")
+		req.Header.Add("content-type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("error sending prompt: %w", err)
+		}
+		defer resp.Body.Close()
+
+		switch resp.StatusCode {
+		case http.StatusTooManyRequests:
+			fmt.Printf("Too many requests, waiting for %d seconds ...\n", QuotaLimitWaitSeconds)
+			time.Sleep(QuotaLimitWaitSeconds * time.Second)
+			continue loop
+		case http.StatusOK:
+			respBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return nil, fmt.Errorf("error reading response body: %w", err)
+			}
+			return respBytes, nil
+		default:
+			var errResp AnthErrorResponse
+			if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil {
+				return nil, fmt.Errorf("unexpected response: code=%d, type=%s, msg=%s", resp.StatusCode, errResp.Error.Type, errResp.Error.Message)
+			}
+			return nil, fmt.Errorf("unexpected response: code=%d", resp.StatusCode)
+		}
 	}
 
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
-	}
-	return respBytes, nil
+	return nil, fmt.Errorf("failed to fetch response within %ds retry window", QuotaResetWindowSeconds)
 }
