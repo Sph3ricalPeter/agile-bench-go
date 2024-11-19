@@ -11,6 +11,7 @@ import (
 
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/external/anth"
+	"github.com/Sph3ricalPeter/frbench/external/google"
 	"github.com/Sph3ricalPeter/frbench/internal"
 	"github.com/Sph3ricalPeter/frbench/internal/common"
 	"github.com/Sph3ricalPeter/frbench/internal/eval"
@@ -98,9 +99,9 @@ func main() {
 	results := loadResultsOrEmpty()
 
 	conns := []external.Connector{
-		// google.NewGoogleConnector(google.Gemini15Pro, ""),
-		// google.NewGoogleConnector(google.Gemini15Flash8B, ""),
-		// anth.NewAnthConnector(anth.Claude3Haiku, ""),
+		google.NewGoogleConnector(google.Gemini15Flash8B, ""),
+		google.NewGoogleConnector(google.Gemini15Pro, ""),
+		anth.NewAnthConnector(anth.Claude3Haiku, ""),
 		anth.NewAnthConnector(anth.Claude35Sonnet, ""),
 	}
 

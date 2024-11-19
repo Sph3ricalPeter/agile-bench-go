@@ -64,8 +64,8 @@ def tab_simple(total_scores: dict, out_filename: str):
             writer.writerow(dict(zip(table[0], row))) 
 
 if __name__ == "__main__":
-    path = "out/2024-11-18T16:27:58+01:00"
+    path = "out/2024-11-19T12:55:13+01:00"
     total_scores = get_total_scores(f"{path}/stats.json")
     tab_simple(total_scores, f"{path}/scores.csv")
     total_cost = get_total_cost(f'{path}/stats.json')
-    print(f"total cost: ${total_cost} ({total_cost * 26} CzK)")
+    print(f"total cost: ${total_cost} ({total_cost * 24} CzK)")

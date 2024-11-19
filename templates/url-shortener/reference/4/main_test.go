@@ -99,14 +99,14 @@ func TestLookupTableDriven(t *testing.T) {
 	}
 }
 
-func newTestHandler() *ShortenHandler {
-	return NewShortenHandler(newTestStorage())
+func newTestStorage() *InMemUrlStorage {
+	return &InMemUrlStorage{slugToUrlMap: map[string]string{
+		TestSlug: TestUrl,
+	}}
 }
 
-func newTestStorage() UrlStorage {
-	s := NewInMemUrlStorage()
-	s.Put(TestUrl)
-	return s
+func newTestHandler() *ShortenHandler {
+	return NewShortenHandler(newTestStorage())
 }
 
 func mustJsonEncode(t *testing.T, req interface{}) *bytes.Buffer {

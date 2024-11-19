@@ -89,7 +89,7 @@ func (c *GoogleConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *
 	if err := json.Unmarshal(resp, &respData); err != nil {
 		return nil, fmt.Errorf("error unmarshalling response: %w", err)
 	}
-	if len(respData.Candidates) == 0 {
+	if len(respData.Candidates) == 0 || len(respData.Candidates[0].Content.Parts) == 0 {
 		return nil, fmt.Errorf("no candidates in response")
 	}
 
