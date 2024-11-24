@@ -37,8 +37,7 @@ var (
 )
 
 type AnthPromptData struct {
-	Model AnthModel `json:"model"`
-	Role  AnthRole  `json:"role"`
+	Role AnthRole `json:"role"`
 }
 
 func mapPromptData(p external.SendPromptOpts) (*AnthPromptData, error) {
@@ -94,18 +93,20 @@ func NewMessage(role AnthRole, content []AnthMessageContent) AnthMessage {
 }
 
 type AnthRequest struct {
-	Model     AnthModel     `json:"model"`
-	MaxTokens int           `json:"max_tokens"`
-	System    string        `json:"system,omitempty"`
-	Messages  []AnthMessage `json:"messages"`
+	Model       AnthModel     `json:"model"`
+	MaxTokens   int           `json:"max_tokens"`
+	System      string        `json:"system,omitempty"`
+	Messages    []AnthMessage `json:"messages"`
+	Temperature float64       `json:"temperature"`
 }
 
-func NewRequest(model AnthModel, maxTokens int, system string, messages []AnthMessage) AnthRequest {
+func NewRequest(model AnthModel, maxTokens int, system string, temp float64, messages []AnthMessage) AnthRequest {
 	return AnthRequest{
-		Model:     model,
-		MaxTokens: maxTokens,
-		System:    system,
-		Messages:  messages,
+		Model:       model,
+		MaxTokens:   maxTokens,
+		System:      system,
+		Temperature: temp,
+		Messages:    messages,
 	}
 }
 

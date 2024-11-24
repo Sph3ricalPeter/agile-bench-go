@@ -22,5 +22,5 @@ project:
     description: "Implement a a method that writes all the TODOs in a formatted way. The format should be 'id: text (status)'. "
     score: 3
   - name: "CLI interface"
-    description: "Implement a CLI interface to interact with the TODO app. The CLI should support the following commands: 'add Text', 'remove id' 'list', 'exit'. Don't print anything additional to stdout. Also add the option to inject different id generators to the TODO storage."
+    description: "Implement a non-blocking CLI interface to interact with the TODO app. The CLI should support the following commands: 'add Text', 'remove id' 'list', 'exit'. Don't print anything additional to stdout. Also add the option to inject different id generators to the TODO storage."
     score: 4

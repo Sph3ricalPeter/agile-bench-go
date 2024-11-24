@@ -52,18 +52,23 @@ func mapToGoogleData(p external.SendPromptOpts) (*GooglePromptData, error) {
 }
 
 type GeminiRequest struct {
-	SystemInstruction GeminiSystemInstruction `json:"system_instruction"`
-	Contents          []GeminiMessage         `json:"contents"`
+	SystemInstruction *GeminiSystemInstruction `json:"system_instruction,omitempty"`
+	Contents          []GeminiMessage          `json:"contents"`
+	GenerationConfig  *GeminiGenerationConfig  `json:"generationConfig,omitempty"`
 }
 
-func NewGeminiRequest(sysInstr string, contents []GeminiMessage) GeminiRequest {
+func NewGeminiRequest(sysInstr string, maxTokens int, temp float64, contents []GeminiMessage) GeminiRequest {
 	return GeminiRequest{
-		SystemInstruction: GeminiSystemInstruction{
+		SystemInstruction: &GeminiSystemInstruction{
 			Parts: []GeminiMessagePart{
 				{Text: sysInstr},
 			},
 		},
 		Contents: contents,
+		GenerationConfig: &GeminiGenerationConfig{
+			Temperature:     temp,
+			MaxOutputTokens: maxTokens,
+		},
 	}
 }
 
@@ -87,6 +92,11 @@ func NewGeminiMessage(role GeminiRole, text string) GeminiMessage {
 
 type GeminiMessagePart struct {
 	Text string `json:"text"`
+}
+
+type GeminiGenerationConfig struct {
+	Temperature     float64 `json:"temperature"`
+	MaxOutputTokens int     `json:"maxOutputTokens"`
 }
 
 type GeminiResponse struct {

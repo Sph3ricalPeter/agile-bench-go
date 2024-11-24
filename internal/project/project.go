@@ -141,11 +141,9 @@ func LoadCodebase() ([]byte, error) {
 	return ret, nil
 }
 
-// TakeCodebaseSnapshot copies the app/ directory to a new directory with the given name inside the out/ directory
-func TakeCodebaseSnapshot(filename string) error {
-	fmt.Printf("Taking codebase snapshot %s\n", filename)
-	common.RunCommand("ls -la app/")
-	dir := fmt.Sprintf("out/%s", filename)
+// TakeCodebaseSnapshot copies the app/ directory to a new directory with the given name
+func TakeCodebaseSnapshot(dir string) error {
+	fmt.Printf("Taking codebase snapshot %s\n", dir)
 	err := os.MkdirAll(dir, 0755)
 	if err != nil {
 		return fmt.Errorf("error creating snapshots directory: %w", err)

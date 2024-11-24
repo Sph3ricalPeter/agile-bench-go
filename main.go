@@ -1,17 +1,16 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Sph3ricalPeter/frbench/external"
 	"github.com/Sph3ricalPeter/frbench/external/anth"
 	"github.com/Sph3ricalPeter/frbench/external/google"
+	"github.com/Sph3ricalPeter/frbench/external/openai"
 	"github.com/Sph3ricalPeter/frbench/internal"
 	"github.com/Sph3ricalPeter/frbench/internal/common"
 	"github.com/Sph3ricalPeter/frbench/internal/eval"
@@ -26,94 +25,29 @@ const (
 	ModeWrite    Mode = "write"     // writing files to a clean codebase for each requirement
 )
 
-type Results struct {
-	Benchmarks []BenchmarkStats `json:"benchmarks"`
-}
-
-func NewResults() Results {
-	return Results{
-		Benchmarks: []BenchmarkStats{},
-	}
-}
-
-type BenchmarkStats struct {
-	Timestamp string                `json:"timestamp"`
-	Models    map[string]ModelStats `json:"models"`
-}
-
-func NewBenchmarkStats() BenchmarkStats {
-	return BenchmarkStats{
-		Timestamp: time.Now().Format(time.RFC3339),
-		Models:    map[string]ModelStats{},
-	}
-}
-
-type ModelStats struct {
-	Projects map[string]ProjectStats `json:"projects"`
-}
-
-type ProjectStats struct {
-	Requirements []RequirementStats `json:"requirements"`
-}
-
-func NewProjectStats(reqCount int) ProjectStats {
-	return ProjectStats{
-		Requirements: make([]RequirementStats, reqCount),
-	}
-}
-
-type RequirementStats struct {
-	Cost      float64 `json:"cost"`
-	Completed bool    `json:"completed"`
-	MaxScore  int     `json:"max_score"`
-	Attempts  int     `json:"attempts"`
-}
-
-type ProjectSummary struct {
-	Score     float64 `json:"score"`
-	MaxScore  float64 `json:"max_score"`
-	TotalCost float64 `json:"cost"`
-}
-
-func NewProjectSummary(ps ProjectStats) ProjectSummary {
-	maxScore := 0.0
-	score := 0.0
-	cost := 0.0
-	for _, reqStats := range ps.Requirements {
-		maxScore += float64(reqStats.MaxScore)
-		if reqStats.Completed {
-			score += float64(reqStats.MaxScore) / float64(reqStats.Attempts)
-		}
-		cost += reqStats.Cost
-	}
-	return ProjectSummary{
-		Score:     score,
-		MaxScore:  maxScore,
-		TotalCost: cost,
-	}
-}
-
 func main() {
 	args := mustParseArgs()
 
-	results := loadResultsOrEmpty()
-
 	conns := []external.Connector{
+		// openai.NewOpenAIConnector(openai.Gpt4o, ""),
+		openai.NewOpenAIConnector(openai.Gpt4oMini, ""),
+		// openai.NewOpenAIConnector(openai.O1Mini, ""),
 		google.NewGoogleConnector(google.Gemini15Flash8B, ""),
-		google.NewGoogleConnector(google.Gemini15Pro, ""),
+		// google.NewGoogleConnector(google.Gemini15Pro, ""),
 		anth.NewAnthConnector(anth.Claude3Haiku, ""),
-		anth.NewAnthConnector(anth.Claude35Sonnet, ""),
+		// anth.NewAnthConnector(anth.Claude35Sonnet, ""),
 	}
 
-	benchStats := NewBenchmarkStats()
+	benchStats := eval.NewBenchmarkStats()
+	outDir := getSnapshotDir(args.evalMode, args.kAttempts, args.temp, benchStats.Timestamp)
 	for _, con := range conns {
-		modelStats := ModelStats{Projects: map[string]ProjectStats{}}
+		modelStats := eval.ModelStats{Projects: map[string]eval.ProjectStats{}}
 
 		for _, projectName := range args.templates {
 			projectInfo := project.MustLoadFromYaml(projectName)
 			project.MustInitProject(projectName)
 
-			var projectStats ProjectStats
+			var projectStats eval.ProjectStats
 			switch args.mode {
 			case ModeWriteInc:
 				projectStats = runIncWriteProcedure(args, con, projectInfo, benchStats.Timestamp)
@@ -127,12 +61,21 @@ func main() {
 		benchStats.Models[con.GetModelName()] = modelStats
 
 		if args.takeSnapshot {
-			mustWriteBenchStats(benchStats, fmt.Sprintf("%s/stats.json", benchStats.Timestamp))
+			common.MustWriteJsonFile(benchStats, fmt.Sprintf("%s/stats.json", outDir))
 		}
 	}
-	results.Benchmarks = append(results.Benchmarks, benchStats)
 
-	mustWriteResults(results)
+	evalInfo := eval.EvalBenchmark(benchStats, args.evalMode)
+	common.MustWriteJsonFile(evalInfo, fmt.Sprintf("%s/eval.json", outDir))
+	eval.MustWriteTable(evalInfo, fmt.Sprintf("%s/scores.csv", outDir), func(mps eval.ModelProjectStats) string {
+		return fmt.Sprintf("%.1f", mps.Score)
+	})
+	eval.MustWriteTable(evalInfo, fmt.Sprintf("%s/costs.csv", outDir), func(mps eval.ModelProjectStats) string {
+		return fmt.Sprintf("%.5f", mps.Cost)
+	})
+	eval.MustWriteTable(evalInfo, fmt.Sprintf("%s/resp_times.csv", outDir), func(mps eval.ModelProjectStats) string {
+		return fmt.Sprintf("%.5f", mps.Duration.Seconds())
+	})
 }
 
 // runIncWriteProcedure runs the incremental writing procedure for the given model and project,
@@ -140,12 +83,13 @@ func main() {
 // each requirement will send a prompt and the expected response is a string containing all changed files
 // which will be written to the project's codebase
 // still works incrementally in that each requirement will build on the previous one, working with the updated codebase
-func runIncWriteProcedure(args Args, con external.Connector, projectInfo project.ProjectInfo, timestamp string) ProjectStats {
+func runIncWriteProcedure(args Args, con external.Connector, projectInfo project.ProjectInfo, timestamp string) eval.ProjectStats {
 	reqCount := len(projectInfo.Project.Requirements)
-	projectStats := NewProjectStats(reqCount)
+	projectStats := eval.NewProjectStats(reqCount)
 
 	fmt.Printf("Running write procedure for model %s on project %s ...\n", con.GetModelName(), projectInfo.Project.Name)
-	for i := 0; i < reqCount; i++ {
+	i := 0
+	for i = 0; i < reqCount; i++ {
 		reqStats := runReq(args, con, projectInfo, i, timestamp)
 		projectStats.Requirements[i] = reqStats
 
@@ -153,8 +97,13 @@ func runIncWriteProcedure(args Args, con external.Connector, projectInfo project
 			break
 		}
 	}
+	for ; i < reqCount; i++ {
+		projectStats.Requirements[i] = eval.RequirementStats{
+			MaxScore: projectInfo.Project.Requirements[i].Score,
+		}
+	}
 
-	ps := NewProjectSummary(projectStats)
+	ps := eval.NewProjectSummary(projectStats)
 
 	fmt.Printf("All Done! %s scored: %.2f/%.2f on the %s project!\n", con.GetModelName(), ps.Score, ps.MaxScore, projectInfo.Project.Name)
 	fmt.Printf("Total cost for project: $%.5f\n", ps.TotalCost)
@@ -164,9 +113,9 @@ func runIncWriteProcedure(args Args, con external.Connector, projectInfo project
 
 // runReq runs the requirement for the given project and model,
 // returns error if anything benchmark-breaking happens
-func runReq(args Args, con external.Connector, pInfo project.ProjectInfo, i int, timestamp string) RequirementStats {
+func runReq(args Args, con external.Connector, pInfo project.ProjectInfo, i int, timestamp string) eval.RequirementStats {
 	req := pInfo.Project.Requirements[i]
-	reqStats := RequirementStats{
+	reqStats := eval.RequirementStats{
 		MaxScore: req.Score,
 	}
 
@@ -175,11 +124,10 @@ func runReq(args Args, con external.Connector, pInfo project.ProjectInfo, i int,
 	promptBytes := common.Must(internal.PrepareWritePrompt(pInfo, i))
 	imageBytes := common.Must(internal.PrepareImagePrompt(pInfo, i))
 
-	maxRe := 3
-	for reIndex := 0; reIndex < maxRe; reIndex++ {
-		fmt.Printf("Running requirement %d (re %d/%d)...\n", i+1, reIndex, maxRe-1)
+	for reIndex := 0; reIndex < args.kAttempts; reIndex++ {
+		fmt.Printf("Running requirement %d (re %d/%d)...\n", i+1, reIndex, args.kAttempts-1)
 
-		pOpts := external.NewUserPromptOpts(promptBytes, imageBytes, i+1, args.useCache)
+		pOpts := external.NewUserPromptOpts(promptBytes, imageBytes, i+1, args.temp, args.useCache)
 		err := runReqAttempt(con, pOpts, &reqStats)
 
 		okMsg := "ok"
@@ -188,7 +136,7 @@ func runReq(args Args, con external.Connector, pInfo project.ProjectInfo, i int,
 		}
 
 		if args.takeSnapshot {
-			project.TakeCodebaseSnapshot(fmt.Sprintf("%s/%s/%s/%d-%s", timestamp, con.GetModelName(), pInfo.Dir, reIndex, okMsg))
+			project.TakeCodebaseSnapshot(fmt.Sprintf("%s/%s/%s/%d-%s", getSnapshotDir(args.evalMode, args.kAttempts, args.temp, timestamp), con.GetModelName(), pInfo.Dir, reIndex, okMsg))
 		}
 
 		if err == nil {
@@ -211,7 +159,7 @@ type ReqAttemptResult struct {
 	CacheKey *string
 }
 
-func runReqAttempt(con external.Connector, pOpts external.SendPromptOpts, reqStats *RequirementStats) error {
+func runReqAttempt(con external.Connector, pOpts external.SendPromptOpts, reqStats *eval.RequirementStats) error {
 	reqStats.Attempts++
 
 	cacheKey := internal.CreateCacheKey(pOpts.Prompt, pOpts.Number)
@@ -227,10 +175,15 @@ func runReqAttempt(con external.Connector, pOpts external.SendPromptOpts, reqSta
 	if result.UsedCache {
 		fmt.Printf("Used cache: %s\n", *result.CacheKey)
 	} else {
-		fmt.Printf("Used %d input / %d output tokens.\n", result.Usage.InputTokens, result.Usage.OutputTokens)
-		cost := eval.MustCalcTotalCost(con.GetModelName(), result.Usage)
-		fmt.Printf("Cost: $%.5f\n", cost)
+		cost := external.MustCalcTotalCost(con.GetModelName(), result.Usage, con.GetCost())
 		reqStats.Cost += cost
+		reqStats.Duration += result.Duration
+		fmt.Printf("Req/resp time: %.5fs\n", result.Duration.Seconds())
+		fmt.Printf("Used %d input / %d output tokens.\n", result.Usage.InputTokens, result.Usage.OutputTokens)
+		if result.Usage.OutputTokens >= external.MaxTokensPerPrompt {
+			fmt.Println("Output tokens exceeded the limit! ⚠")
+		}
+		fmt.Printf("Cost: $%.5f\n", cost)
 	}
 	fmt.Println("Response OK.")
 
@@ -371,13 +324,13 @@ func mustFailTest(pInfo project.ProjectInfo, i int) {
 // 	return ProjectStats{}
 // }
 
-func cleanupWeirdFiles() {
-	fmt.Println("Removing weird files ...")
-	err := common.RunBashCommand("rm -f app/*.go.orig")
-	if err != nil {
-		fmt.Printf("error removing weird files: %s\n", err.Error())
-	}
-}
+// func cleanupWeirdFiles() {
+// 	fmt.Println("Removing weird files ...")
+// 	err := common.RunBashCommand("rm -f app/*.go.orig")
+// 	if err != nil {
+// 		fmt.Printf("error removing weird files: %s\n", err.Error())
+// 	}
+// }
 
 // copyTestFile copies the test file for the given requirement number to the app/ directory
 //
@@ -405,73 +358,26 @@ func runTests() error {
 	return common.RunCommand("go test ./app/")
 }
 
-func loadResultsOrEmpty() Results {
-	if _, err := os.Stat("out/results.json"); os.IsNotExist(err) {
-		return NewResults()
-	}
-
-	resultsBytes, err := os.ReadFile("out/results.json")
-	if err != nil {
-		panic(fmt.Errorf("error reading results: %w", err))
-	}
-
-	var results Results
-	err = json.Unmarshal(resultsBytes, &results)
-	if err != nil {
-		panic(fmt.Errorf("error unmarshalling results: %w", err))
-	}
-
-	return results
-}
-
-func mustWriteResults(results Results) {
-	resultsBytes, err := json.Marshal(results)
-	if err != nil {
-		panic(fmt.Errorf("error marshalling results: %w", err))
-	}
-
-	err = os.MkdirAll("out", os.ModePerm)
-	if err != nil {
-		panic(fmt.Errorf("error creating out directory: %w", err))
-	}
-
-	err = os.WriteFile("out/results.json", resultsBytes, 0644)
-	if err != nil {
-		panic(fmt.Errorf("error writing results: %w", err))
-	}
-}
-
-func mustWriteBenchStats(benchStats BenchmarkStats, filename string) {
-	benchStatsBytes, err := json.Marshal(benchStats)
-	if err != nil {
-		panic(fmt.Errorf("error marshalling benchmark stats: %w", err))
-	}
-
-	err = os.MkdirAll("out", os.ModePerm)
-	if err != nil {
-		panic(fmt.Errorf("error creating out directory: %w", err))
-	}
-
-	err = os.WriteFile(fmt.Sprintf("out/%s", filename), benchStatsBytes, 0644)
-	if err != nil {
-		panic(fmt.Errorf("error writing benchmark stats: %w", err))
-	}
-}
-
 type Args struct {
 	newProject   string
 	templates    []string
 	mode         Mode
+	kAttempts    int
+	evalMode     eval.EvalMode
+	temp         float64
 	useCache     bool
 	interactive  bool
 	takeSnapshot bool
 }
 
-func NewArgs(new string, templates []string, mode Mode, useCache, interactive, takeSnapshot bool) Args {
+func NewArgs(new string, templates []string, mode Mode, kAttempts int, evalMode eval.EvalMode, temp float64, useCache, interactive, takeSnapshot bool) Args {
 	return Args{
 		newProject:   new,
 		templates:    templates,
 		mode:         mode,
+		kAttempts:    kAttempts,
+		evalMode:     evalMode,
+		temp:         temp,
 		useCache:     useCache,
 		interactive:  interactive,
 		takeSnapshot: takeSnapshot,
@@ -501,8 +407,11 @@ func mustParseArgs() Args {
 	cArg := flag.Bool("c", false, "use cache")
 	iArg := flag.Bool("i", false, "interactive mode")
 	sArg := flag.Bool("s", false, "take snapshot")
+	eArg := flag.String("e", "weighted-pass-k", "evaluation mode to use (weighted-pass-k | pass-k)")
+	kArg := flag.Int("k", 3, "number of attempts to make for each requirement")
+	tempArg := flag.Float64("T", 0.7, "temperature to use for the model")
 	flag.Parse()
-	args := NewArgs(*newArg, parseProjectsArg(*tArg), Mode(*mArg), *cArg, *iArg, *sArg)
+	args := NewArgs(*newArg, parseProjectsArg(*tArg), Mode(*mArg), *kArg, eval.EvalMode(*eArg), *tempArg, *cArg, *iArg, *sArg)
 	fmt.Printf("Running with args: %+v\n", args)
 
 	return args
@@ -511,4 +420,8 @@ func mustParseArgs() Args {
 // parseProjectsArg parses comma separated project names
 func parseProjectsArg(arg string) []string {
 	return strings.Split(arg, ",")
+}
+
+func getSnapshotDir(evalMode eval.EvalMode, kAttempts int, temp float64, timestamp string) string {
+	return fmt.Sprintf("out/%s_k%d_T%02.0f_%s", evalMode, kAttempts, temp*10, timestamp)
 }

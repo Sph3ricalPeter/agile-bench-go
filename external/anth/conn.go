@@ -19,9 +19,21 @@ var (
 )
 
 const (
-	MaxTokens               = 2048
 	QuotaResetWindowSeconds = 60
 	QuotaLimitWaitSeconds   = 5
+)
+
+var (
+	ModelsCostMap = map[AnthModel]external.ModelCost{
+		Claude3Haiku: {
+			UsdMtokIn:  0.25,
+			UsdMtokOut: 1.25,
+		},
+		Claude35Sonnet: {
+			UsdMtokIn:  3.0,
+			UsdMtokOut: 15.0,
+		},
+	}
 )
 
 type AnthConnector struct {
@@ -42,37 +54,37 @@ func NewAnthConnector(model AnthModel, sysPrompt string) *AnthConnector {
 
 // SendPrompt sends a prompt to the Anthropic API and returns the result.
 // If the prompt is successfully sent, the response is cached.
-func (c *AnthConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPromptResult, error) {
+func (c *AnthConnector) SendPrompt(opts external.SendPromptOpts) (*external.SendPromptResult, error) {
 	// map to model specific prompt data
-	apd, err := mapPromptData(pd)
+	pd, err := mapPromptData(opts)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping prompt data: %w", err)
 	}
 
 	content := []AnthMessageContent{
-		NewTextContent(string(pd.Prompt)),
+		NewTextContent(string(opts.Prompt)),
 	}
-	if pd.Image != nil {
-		content = append(content, NewImageContent("image/png", string(pd.Image)))
+	if opts.Image != nil {
+		content = append(content, NewImageContent("image/png", string(opts.Image)))
 	}
-	promptMsg := NewMessage(apd.Role, content)
+	promptMsg := NewMessage(pd.Role, content)
 	var msgs []AnthMessage
-	if pd.UseHistory {
+	if opts.UseHistory {
 		msgs = append(c.history, promptMsg)
 	} else {
 		msgs = []AnthMessage{promptMsg}
 	}
-	reqPayload := NewRequest(c.model, MaxTokens, c.sysPrompt, msgs)
+	reqPayload := NewRequest(c.model, external.MaxTokensPerPrompt, c.sysPrompt, opts.Temp, msgs)
 
 	// TODO: caching and history should be common for all connectors ...
 	// if history uses common prompt struct, this can be moved outside of the SendPrompt method
 	// and the prompt is only added to history if response is OK, which means it can be done after the SendPrompt call
-	cacheKey := internal.CreateCacheKey(pd.Prompt, pd.Number)
-	if pd.UseCache {
+	cacheKey := internal.CreateCacheKey(opts.Prompt, opts.Number)
+	if opts.UseCache {
 		if respBytes, ok := c.cache.Get(cacheKey); ok {
 			fmt.Println("Using cached response ...")
 			c.history = append(c.history, promptMsg)
-			return c.GetPromptResult(respBytes, true, &cacheKey)
+			return c.GetPromptResult(respBytes, true, &cacheKey, 0)
 		}
 	}
 
@@ -80,18 +92,20 @@ func (c *AnthConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPr
 	json.NewEncoder(reqBody).Encode(reqPayload)
 
 	// FIXME: testing only
-	_ = os.WriteFile(fmt.Sprintf("data/anth-req-%d.json", pd.Number), reqBody.Bytes(), 0644)
+	_ = os.WriteFile(fmt.Sprintf("data/anth-req-%d.json", opts.Number), reqBody.Bytes(), 0644)
 
+	startTime := time.Now()
 	respBytes, err := sendRequest(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
+	totalDuration := time.Since(startTime)
 	c.history = append(c.history, promptMsg)
 
-	return c.GetPromptResult(respBytes, false, &cacheKey)
+	return c.GetPromptResult(respBytes, false, &cacheKey, totalDuration)
 }
 
-func (c *AnthConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *string) (*external.SendPromptResult, error) {
+func (c *AnthConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *string, duration time.Duration) (*external.SendPromptResult, error) {
 	respData := AnthResponse{}
 	err := json.Unmarshal(resp, &respData)
 	if err != nil {
@@ -117,6 +131,7 @@ func (c *AnthConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *st
 		Content:   respData.Content[0].Text,
 		CacheKey:  cacheKey,
 		UsedCache: isCached,
+		Duration:  duration,
 	}, nil
 }
 
@@ -130,6 +145,10 @@ func (c *AnthConnector) InvalidateCachedPrompt(cacheKey string) error {
 
 func (c *AnthConnector) GetModelName() string {
 	return string(c.model)
+}
+
+func (c *AnthConnector) GetCost() external.ModelCost {
+	return ModelsCostMap[c.model]
 }
 
 func sendRequest(reqBody *bytes.Buffer) ([]byte, error) {

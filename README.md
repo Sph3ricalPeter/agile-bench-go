@@ -1,6 +1,12 @@
 # Go-Agile Bench
 LLM benchmark for agile software development in Golang via functional requirements using TDD approach for evaluation.
 
+## Usage
+
+```bash
+go run main.go -t=functions,simple-website,simple-todo,url-shortener -s -e=pass-k -k=1 -T=0.2
+```
+
 ## Procedures
 
 1. patch procedure - init folder, then for each req. send a prompt, parse patch file from response & apply it, evaluate by checking fail->pass tests. Optionally use history for chat-like conversation.

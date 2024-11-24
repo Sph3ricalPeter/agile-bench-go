@@ -23,6 +23,23 @@ const (
 	QuotaLimitWaitSeconds   = 5
 )
 
+var (
+	ModelsCostMap = map[GoogleModel]external.ModelCost{
+		Gemini15Flash8B: {
+			UsdMtokIn:  0.5,
+			UsdMtokOut: 1.5,
+		},
+		Gemini15Flash: {
+			UsdMtokIn:  0.5,
+			UsdMtokOut: 1.5,
+		},
+		Gemini15Pro: {
+			UsdMtokIn:  1.46,
+			UsdMtokOut: 5.87,
+		},
+	}
+)
+
 type GoogleConnector struct {
 	model     GoogleModel
 	sysPrompt string
@@ -39,52 +56,54 @@ func NewGoogleConnector(model GoogleModel, sysPrompt string) *GoogleConnector {
 	}
 }
 
-func (c *GoogleConnector) SendPrompt(pd external.SendPromptOpts) (*external.SendPromptResult, error) {
-	gpd, err := mapToGoogleData(pd)
+func (c *GoogleConnector) SendPrompt(opts external.SendPromptOpts) (*external.SendPromptResult, error) {
+	pd, err := mapToGoogleData(opts)
 	if err != nil {
 		return nil, fmt.Errorf("error mapping prompt data: %w", err)
 	}
 
-	promptMsg := NewGeminiMessage(gpd.Role, string(pd.Prompt))
+	promptMsg := NewGeminiMessage(pd.Role, string(opts.Prompt))
 	var msgs []GeminiMessage
-	if pd.UseHistory {
+	if opts.UseHistory {
 		msgs = append(c.history, promptMsg)
 	} else {
 		msgs = []GeminiMessage{promptMsg}
 	}
-	reqPayload := NewGeminiRequest(c.sysPrompt, msgs)
+	reqPayload := NewGeminiRequest(c.sysPrompt, external.MaxTokensPerPrompt, opts.Temp, msgs)
 
 	reqBody := bytes.NewBuffer([]byte{})
 	json.NewEncoder(reqBody).Encode(reqPayload)
 
 	// FIXME: testing only
-	_ = os.WriteFile(fmt.Sprintf("data/gemini-req-%d.json", pd.Number), reqBody.Bytes(), 0644)
+	_ = os.WriteFile(fmt.Sprintf("data/gemini-req-%d.json", opts.Number), reqBody.Bytes(), 0644)
 
-	cacheKey := internal.CreateCacheKey(pd.Prompt, pd.Number)
-	if pd.UseCache {
+	cacheKey := internal.CreateCacheKey(opts.Prompt, opts.Number)
+	if opts.UseCache {
 		if respBytes, ok := c.cache.Get(cacheKey); ok {
 			fmt.Println("Using cached response ...")
 			c.history = append(c.history, promptMsg)
-			return c.GetPromptResult(respBytes, true, &cacheKey)
+			return c.GetPromptResult(respBytes, true, &cacheKey, 0)
 		}
 	}
 
+	startTime := time.Now()
 	respBytes, err := sendRequest(reqBody, c.model)
 	if err != nil {
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
+	totalDuration := time.Since(startTime)
 
 	// FIXME: testing only
-	_ = os.WriteFile(fmt.Sprintf("data/gemini-resp-%d.json", pd.Number), respBytes, 0644)
+	_ = os.WriteFile(fmt.Sprintf("data/gemini-resp-%d.json", opts.Number), respBytes, 0644)
 
-	if pd.UseHistory {
+	if opts.UseHistory {
 		c.history = append(c.history, promptMsg)
 	}
 
-	return c.GetPromptResult(respBytes, false, &cacheKey)
+	return c.GetPromptResult(respBytes, false, &cacheKey, totalDuration)
 }
 
-func (c *GoogleConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *string) (*external.SendPromptResult, error) {
+func (c *GoogleConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *string, duration time.Duration) (*external.SendPromptResult, error) {
 	respData := GeminiResponse{}
 	if err := json.Unmarshal(resp, &respData); err != nil {
 		return nil, fmt.Errorf("error unmarshalling response: %w", err)
@@ -104,6 +123,7 @@ func (c *GoogleConnector) GetPromptResult(resp []byte, isCached bool, cacheKey *
 		Content:   respData.Candidates[0].Content.Parts[0].Text,
 		CacheKey:  cacheKey,
 		UsedCache: isCached,
+		Duration:  duration,
 	}, nil
 }
 
@@ -117,6 +137,10 @@ func (c *GoogleConnector) InvalidateCachedPrompt(cacheKey string) error {
 
 func (c *GoogleConnector) GetModelName() string {
 	return string(c.model)
+}
+
+func (c *GoogleConnector) GetCost() external.ModelCost {
+	return ModelsCostMap[c.model]
 }
 
 func sendRequest(reqBody *bytes.Buffer, model GoogleModel) ([]byte, error) {

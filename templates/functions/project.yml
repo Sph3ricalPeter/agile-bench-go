@@ -1,35 +1,35 @@
 project:
   name: "Functions"
   description: "A library of independent functions"
-  type: "single"
+  type: "single" # project doesn't have stages
   requirements:
   - name: "add function"
-    description: Implement the 'add' function which will take two integers and return their sum.
+    description: "Implement the 'add' function which will take two integers and return their sum."
     score: 1
   - name: "subtract function"
-    description: Implement the 'subtract' function which will take two integers and return their difference.
+    description: "Implement the 'subtract' function which will take two integers and return their difference."
     score: 1
   - name: "fib function"
-    description: Implement the 'fib' function which will take an integer and return the nth number in the Fibonacci sequence.
+    description: "Implement the 'fib' function which will take an integer and return the nth number in the Fibonacci sequence."
     score: 1
   - name: "split function"
-    description: Using the std library, implement the 'split' function which will take a string and a separator string and return a list of substrings.
+    description: "Using the std library, implement the 'split' function which will take a string and a separator string and return a list of substrings."
     score: 1
   - name: "custom split function"
-    description: Implement the 'splitIterative' function which will take a string and a separator string and return a list of substrings.
+    description: "Implement the 'splitIterative' function which will take a string and a separator string and return a list of substrings."
     score: 2
   - name: "reverse string"
-    description: Implement the 'reverse' function which will take a string and return the reversed string.
+    description: "Implement the 'reverse' function which will take a string and return the reversed string."
     score: 2
   - name: "binary search"
-    description: Implement the 'binarySearch' function which will take a sorted list of integers and a target integer and return the index of the target integer in the list.
+    description: "Implement the 'binarySearch' function which will take a sorted list of integers and a target integer and return the index of the target integer in the list."
     score: 2
   - name: "merge sort"
-    description: Implement the 'mergeSort' function which will take a list of integers and return a sorted list using the merge sort algorithm.
+    description: "Implement the 'mergeSort' function which will take a list of integers and return a sorted list using the merge sort algorithm."
     score: 2
   - name: "dijkstra"
-    description: Implement the 'dijkstra' function which will take an adjacency graph and a starting node and return the shortest path to all other nodes using Dijkstra's algorithm.
+    description: "Implement the 'dijkstra' function which will take an adjacency graph and a starting node and return the shortest path to all other nodes using Dijkstra's algorithm."
     score: 3
   - name: "concurrent fibonacci"
-    description: Implement the 'concFib' function which will take an integer and return the nth number in the Fibonacci sequence using goroutines.
+    description: "Implement the 'concFib' function which will take an integer and return the nth number in the Fibonacci sequence using goroutines."
     score: 3
