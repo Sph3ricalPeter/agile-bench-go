@@ -133,9 +133,9 @@ func PrepareWritePrompt(projectInfo project.ProjectInfo, i int) ([]byte, error) 
 <codebase>
 %s
 </codebase>
-Here is an example of a generated list of files. It consists of code blocks annotated with the language. Comments specify the start and end of each file and its name.
+Here is an example of a generated list of files. It consists of a single code block containing a list of file contents. Comments specify the start and end of each file and its name.
 <files>
-%sgo
+%s
 // start of file.go
 package main
 
@@ -191,7 +191,7 @@ type File struct {
 // we need to extract the contents of the blocks and write them to files
 // use regex ```((.|\n)*)``` to extract the blocks
 func ParseWriteResponse(content []byte) ([]File, error) {
-	re := regexp.MustCompile("```go\n((.|\n)*)```")
+	re := regexp.MustCompile("```\n((.|\n)*)```")
 	matches := re.FindAllSubmatch(content, -1)
 	if len(matches) == 0 {
 		return nil, fmt.Errorf("no file contents found")
@@ -202,6 +202,9 @@ func ParseWriteResponse(content []byte) ([]File, error) {
 	file := matches[0][1]
 	re = regexp.MustCompile("(\\/\\/ start of )(.*\\..*)\n((.|\n)*?)(\\/\\/ end)")
 	matches = re.FindAllSubmatch(file, -1)
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no files found")
+	}
 	var files []File
 	for _, match := range matches {
 		newFile := File{
@@ -209,8 +212,6 @@ func ParseWriteResponse(content []byte) ([]File, error) {
 			Content: match[3],
 		}
 		files = append(files, newFile)
-		// fmt.Printf("file: '%s'\ncontent: '\n%s'\n", match[2], match[3])
-		// _ = os.WriteFile("data/"+newFile.Name, newFile.Content, 0644)
 	}
 	return files, nil
 }

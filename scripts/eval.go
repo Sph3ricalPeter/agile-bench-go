@@ -16,7 +16,7 @@ func main() {
 
 	benchStats := common.MustReadJsonFileInto[eval.BenchmarkStats](fmt.Sprintf("%s/stats.json", outDir))
 
-	evalInfo := eval.EvalBenchmark(benchStats, eval.PassK)
+	evalInfo := eval.EvalBenchmark(benchStats, eval.ScoreK)
 
 	common.MustWriteJsonFile(evalInfo, fmt.Sprintf("out/%s/eval-1.json", BenchDir))
 	eval.MustWriteTable(evalInfo, fmt.Sprintf("%s/scores-1.csv", outDir), func(mps eval.ModelProjectStats) string {

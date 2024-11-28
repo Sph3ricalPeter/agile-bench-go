@@ -43,34 +43,38 @@ type RequirementStats struct {
 }
 
 type ProjectSummary struct {
-	Score     float64 `json:"score"`
-	MaxScore  float64 `json:"max_score"`
-	TotalCost float64 `json:"cost"`
+	Score     float64       `json:"score"`
+	MaxScore  float64       `json:"max_score"`
+	TotalCost float64       `json:"cost"`
+	Duration  time.Duration `json:"duration"`
 }
 
 func NewProjectSummary(ps ProjectStats) ProjectSummary {
 	maxScore := 0.0
 	score := 0.0
 	cost := 0.0
+	d := time.Duration(0)
 	for _, reqStats := range ps.Requirements {
 		maxScore += float64(reqStats.MaxScore)
 		if reqStats.Completed {
 			score += float64(reqStats.MaxScore) / float64(reqStats.Attempts)
 		}
 		cost += reqStats.Cost
+		d += reqStats.Duration
 	}
 	return ProjectSummary{
 		Score:     score,
 		MaxScore:  maxScore,
 		TotalCost: cost,
+		Duration:  d,
 	}
 }
 
 type EvalMode string
 
 const (
-	PassK         EvalMode = "pass-k"
-	WeightedPassK EvalMode = "weighted-pass-k"
+	ScoreK         EvalMode = "score-k"
+	WeightedScoreK EvalMode = "weighted-score-k"
 )
 
 type ModelProjectStats struct {
@@ -92,9 +96,9 @@ func EvalBenchmark(stats BenchmarkStats, mode EvalMode) map[string]map[string]Mo
 					continue
 				}
 				switch mode {
-				case WeightedPassK:
+				case WeightedScoreK:
 					stats.Score += float64(reqStats.MaxScore) / float64(reqStats.Attempts)
-				case PassK:
+				case ScoreK:
 					stats.Score += float64(reqStats.MaxScore)
 				default:
 					panic("invalid eval mode")

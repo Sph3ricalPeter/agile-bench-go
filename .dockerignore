@@ -1,0 +1,8 @@
+.vscode
+.env
+
+app
+cache
+data
+docs
+out

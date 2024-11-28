@@ -53,6 +53,7 @@ func mapToGoogleData(p external.SendPromptOpts) (*GooglePromptData, error) {
 
 type GeminiRequest struct {
 	SystemInstruction *GeminiSystemInstruction `json:"system_instruction,omitempty"`
+	SafetySettings    []GeminiSafetySettings   `json:"safetySettings,omitempty"`
 	Contents          []GeminiMessage          `json:"contents"`
 	GenerationConfig  *GeminiGenerationConfig  `json:"generationConfig,omitempty"`
 }
@@ -64,12 +65,20 @@ func NewGeminiRequest(sysInstr string, maxTokens int, temp float64, contents []G
 				{Text: sysInstr},
 			},
 		},
+		SafetySettings: []GeminiSafetySettings{
+			{Category: "HARM_CATEGORY_DANGEROUS_CONTENT", Threshold: "BLOCK_ONLY_HIGH"},
+		},
 		Contents: contents,
 		GenerationConfig: &GeminiGenerationConfig{
 			Temperature:     temp,
 			MaxOutputTokens: maxTokens,
 		},
 	}
+}
+
+type GeminiSafetySettings struct {
+	Category  string `json:"category"`
+	Threshold string `json:"threshold"`
 }
 
 type GeminiSystemInstruction struct {

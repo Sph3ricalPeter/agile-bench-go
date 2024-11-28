@@ -68,7 +68,7 @@ func (c *OpenAIConnector) SendPrompt(opts external.SendPromptOpts) (*external.Se
 		NewTextContent(string(opts.Prompt)),
 	}
 	if opts.Image != nil {
-		content = append(content, NewImageContent(string(opts.Image)))
+		content = append(content, NewPngImageContent(string(opts.Image)))
 	}
 
 	reqPayload := NewRequest(c.model, external.MaxTokensPerPrompt, opts.Temp, NewOpenAIMessage(pd.Role, content))
@@ -96,6 +96,9 @@ func (c *OpenAIConnector) SendPrompt(opts external.SendPromptOpts) (*external.Se
 		return nil, fmt.Errorf("error sending prompt: %w", err)
 	}
 	totalDuration := time.Since(startTime)
+
+	// FIXME: testing only
+	_ = os.WriteFile(fmt.Sprintf("data/openai-resp-%d.json", opts.Number), respBytes, 0644)
 
 	return c.GetPromptResult(respBytes, false, &cacheKey, totalDuration)
 }

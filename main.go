@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/Sph3ricalPeter/frbench/external"
-	"github.com/Sph3ricalPeter/frbench/external/anth"
-	"github.com/Sph3ricalPeter/frbench/external/google"
 	"github.com/Sph3ricalPeter/frbench/external/openai"
 	"github.com/Sph3ricalPeter/frbench/internal"
 	"github.com/Sph3ricalPeter/frbench/internal/common"
@@ -32,9 +30,9 @@ func main() {
 		// openai.NewOpenAIConnector(openai.Gpt4o, ""),
 		openai.NewOpenAIConnector(openai.Gpt4oMini, ""),
 		// openai.NewOpenAIConnector(openai.O1Mini, ""),
-		google.NewGoogleConnector(google.Gemini15Flash8B, ""),
+		// google.NewGoogleConnector(google.Gemini15Flash8B, ""),
 		// google.NewGoogleConnector(google.Gemini15Pro, ""),
-		anth.NewAnthConnector(anth.Claude3Haiku, ""),
+		// anth.NewAnthConnector(anth.Claude3Haiku, ""),
 		// anth.NewAnthConnector(anth.Claude35Sonnet, ""),
 	}
 
@@ -88,16 +86,19 @@ func runIncWriteProcedure(args Args, con external.Connector, projectInfo project
 	projectStats := eval.NewProjectStats(reqCount)
 
 	fmt.Printf("Running write procedure for model %s on project %s ...\n", con.GetModelName(), projectInfo.Project.Name)
-	i := 0
-	for i = 0; i < reqCount; i++ {
-		reqStats := runReq(args, con, projectInfo, i, timestamp)
-		projectStats.Requirements[i] = reqStats
+	projectFailed := false
+	for i := 0; i < reqCount; i++ {
+		if !projectFailed {
+			reqStats := runReq(args, con, projectInfo, i, timestamp)
+			projectStats.Requirements[i] = reqStats
 
-		if !reqStats.Completed {
-			break
+			if !reqStats.Completed {
+				fmt.Printf("Requirement %d failed, stopping project ...\n", i+1)
+				projectFailed = true
+			}
+			continue
 		}
-	}
-	for ; i < reqCount; i++ {
+
 		projectStats.Requirements[i] = eval.RequirementStats{
 			MaxScore: projectInfo.Project.Requirements[i].Score,
 		}
@@ -107,6 +108,7 @@ func runIncWriteProcedure(args Args, con external.Connector, projectInfo project
 
 	fmt.Printf("All Done! %s scored: %.2f/%.2f on the %s project!\n", con.GetModelName(), ps.Score, ps.MaxScore, projectInfo.Project.Name)
 	fmt.Printf("Total cost for project: $%.5f\n", ps.TotalCost)
+	fmt.Printf("Total time for project: %.5fs\n", ps.Duration.Seconds())
 
 	return projectStats
 }
@@ -136,7 +138,7 @@ func runReq(args Args, con external.Connector, pInfo project.ProjectInfo, i int,
 		}
 
 		if args.takeSnapshot {
-			project.TakeCodebaseSnapshot(fmt.Sprintf("%s/%s/%s/%d-%s", getSnapshotDir(args.evalMode, args.kAttempts, args.temp, timestamp), con.GetModelName(), pInfo.Dir, reIndex, okMsg))
+			project.TakeCodebaseSnapshot(fmt.Sprintf("%s/%s/%s/r%d-a%d-%s", getSnapshotDir(args.evalMode, args.kAttempts, args.temp, timestamp), con.GetModelName(), pInfo.Dir, pOpts.Number, reIndex, okMsg))
 		}
 
 		if err == nil {
@@ -187,6 +189,9 @@ func runReqAttempt(con external.Connector, pOpts external.SendPromptOpts, reqSta
 	}
 	fmt.Println("Response OK.")
 
+	// FIXME: testing only
+	_ = os.WriteFile("data/resp-content.txt", []byte(result.Content), 0644)
+
 	// parsing failed, retry
 	files, err := internal.ParseWriteResponse([]byte(result.Content))
 	if err != nil {
@@ -213,7 +218,10 @@ func runReqAttempt(con external.Connector, pOpts external.SendPromptOpts, reqSta
 }
 
 func writeAllFiles(files []internal.File) error {
+	fmt.Printf("Writing %d files ...\n", len(files))
 	for _, file := range files {
+		fmt.Printf("Writing file %s ...\nContents: %s\n", file.RelPath, file.Content)
+
 		path := filepath.Join("app/", file.RelPath)
 		err := os.MkdirAll(filepath.Dir(path), os.ModePerm)
 		if err != nil {
@@ -403,13 +411,14 @@ func mustParseArgs() Args {
 	}
 
 	tArg := flag.String("t", "functions", "project template to use (functions | simple-todo)")
-	mArg := flag.String("m", "write-inc", "mode to run (patch-inc | write-inc | write)")
+	mArg := flag.String("M", "write-inc", "mode to run (patch-inc | write-inc | write)")
 	cArg := flag.Bool("c", false, "use cache")
 	iArg := flag.Bool("i", false, "interactive mode")
 	sArg := flag.Bool("s", false, "take snapshot")
-	eArg := flag.String("e", "weighted-pass-k", "evaluation mode to use (weighted-pass-k | pass-k)")
+	eArg := flag.String("e", "weighted-pass-k", "evaluation mode to use (weighted-score-k | score-k)")
 	kArg := flag.Int("k", 3, "number of attempts to make for each requirement")
 	tempArg := flag.Float64("T", 0.7, "temperature to use for the model")
+	// modelsArg := flag.String("m", "gpt4o-mini", "models to use (gpt4o-mini | gpt4o | o1-mini | gemini15-flash-8b | gemini15-pro | claude3-haiku | claude35-sonnet)")
 	flag.Parse()
 	args := NewArgs(*newArg, parseProjectsArg(*tArg), Mode(*mArg), *kArg, eval.EvalMode(*eArg), *tempArg, *cArg, *iArg, *sArg)
 	fmt.Printf("Running with args: %+v\n", args)

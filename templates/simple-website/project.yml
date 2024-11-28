@@ -10,7 +10,7 @@ project:
     description: Implement a GET '/' endpoint which returns a simple HTML page with a welcome message in a H1 header. The message should be 'Welcome to simple website!'. Use the 'templates/' directory to store html files.
     score: 3
   - name: "Bootstrap template"
-    description: "Use Bootstrap imported via CDN to style the website. Add a top navigation links with 'Home', 'About' and 'Contact' links. Make sure it looks like in the provided image."
-    assets:
-    - assets/bs-menu.png
+    description: "Use Bootstrap imported via CDN to style the website. Add all required elements using Bootstrap components to make sure it looks like in the provided image."
+    attachments:
+    - assets/simple-web-example.png
     score: 4

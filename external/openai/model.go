@@ -82,11 +82,11 @@ func NewTextContent(content string) OpenAIMessageContent {
 	}
 }
 
-func NewImageContent(datab64 string) OpenAIMessageContent {
+func NewPngImageContent(datab64 string) OpenAIMessageContent {
 	return OpenAIMessageContent{
-		Type: "image",
+		Type: "image_url",
 		ImageUrl: &OpenAIImageUrl{
-			Url: datab64,
+			Url: fmt.Sprintf("data:image/png;base64,%s", datab64),
 		},
 	}
 }
